@@ -1,0 +1,18 @@
+host: "127.0.0.1:3000"
+
+mqtt:
+  dsn: "tcp://localhost:1882"
+  user: "user"
+  pass: "pass"
+  clientId: "my-uniq-client"
+
+devices:
+  - name: "Home"
+    topic: "from-device-mqtt-config-1"
+  - name: "Bedroom"
+    topic: "from-device-mqtt-config-2"
+
+storage:
+  driver: "sqlite"
+  dsn: "database.db"
+  flushPeriod: 5m
