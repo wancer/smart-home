@@ -3,55 +3,26 @@ package mqtt
 import (
 	"encoding/json"
 	"log/slog"
-	"smart-home/config"
+	"smart-home/event"
+	"smart-home/internal"
+	"smart-home/model"
 	"sync"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-type TasmotaTime time.Time
-
-func (d *TasmotaTime) UnmarshalJSON(in []byte) error {
-	// Strip the double quotes from the JSON string.
-	in = in[1 : len(in)-1]
-	// Replace "T" to " ": 2022-01-02T12:34:56 -> 2022-01-02 12:34:56
-	in[10] = byte(' ')
-	// Parse the result using our desired format.
-	parsed, err := time.Parse(time.DateTime, string(in))
-	if err != nil {
-		return err
-	}
-	// finally, assign *d
-	*d = TasmotaTime(parsed)
-	return nil
-}
-
-type SensorData struct {
-	TotalStartTime TasmotaTime `json:"TotalStartTime"` // DateTime of calculation for Total
-	Total          float32     `json:"Total"`          // Total Energy usage including Today
-	Yesterday      float32     `json:"Yesterday"`      // Total Energy usage between 00:00 and 24:00 yesterday
-	Today          float32     `json:"Today"`          // Total Energy usage today from 00:00 until now
-	Period         int         `json:"Period"`         // Energy usage between previous message and now
-	Power          int         `json:"Power"`          // Current effective power load
-	ApparentPower  int         `json:"ApparentPower"`  // Power load on the cable = sqrt(Power^2 + ReactivePower^2)
-	ReactivePower  int         `json:"ReactivePower"`  // Reactive load
-	Factor         float32     `json:"Factor"`         // The ratio of the real power flowing to the load to the apparent power in the circuit
-	Voltage        int         `json:"Voltage"`        // Current line voltage
-	Current        float32     `json:"Current"`        // Current line current
-}
-
-type SensorEvent struct {
-	Time   TasmotaTime `json:"Time"`
-	Energy SensorData  `json:"ENERGY"`
-}
-
-func GetSensorsHandler(wg *sync.WaitGroup, device *config.Device, storage *Storage) func(client mqtt.Client, msg mqtt.Message) {
+func GetSensorsHandler(
+	wg *sync.WaitGroup,
+	device *model.DeviceModel,
+	storage *internal.Storage,
+	ws WsBroadcaster, // interface
+) func(client mqtt.Client, msg mqtt.Message) {
 	var myHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 		wg.Add(1)
 		defer wg.Done()
 
-		var event SensorEvent
+		var event *event.SensorEvent
 		err := json.Unmarshal(msg.Payload(), &event)
 		if err != nil {
 			slog.Error(
@@ -62,10 +33,32 @@ func GetSensorsHandler(wg *sync.WaitGroup, device *config.Device, storage *Stora
 			)
 			return
 		}
-		now := time.Now()
+
 		slog.Debug("sensor", "event", string(msg.Payload()))
-		storage.Store(device.Topic, &event, &now)
+		m := toModel(event, device)
+
+		storage.Store(m)
+		storage.StoreDaily(event, device)
+
+		ws.Send("sensor", m)
 	}
 
 	return myHandler
+}
+
+func toModel(e *event.SensorEvent, d *model.DeviceModel) *model.SensorEventModel {
+	now := time.Now()
+
+	r := &model.SensorEventModel{}
+	r.DeviceId = d.ID
+	r.RealTime = now
+	r.DeviceTime = time.Time(e.Time)
+	r.Period = uint(e.Energy.Period)
+	r.Power = uint(e.Energy.Power)
+	r.ApparentPower = uint(e.Energy.ApparentPower)
+	r.ReactivePower = uint(e.Energy.ReactivePower)
+	r.Voltage = uint(e.Energy.Voltage)
+	r.Current = e.Energy.Current
+
+	return r
 }

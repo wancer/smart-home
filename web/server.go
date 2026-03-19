@@ -11,15 +11,18 @@ import (
 
 type Server struct {
 	router *chi.Mux
+	ws     *WebSocketServer
 }
 
 func NewWebServer(
 	router *chi.Mux,
+	ws *WebSocketServer,
 	sensors *SensorsController,
 	devices *DevicesController,
 ) *Server {
 	router.Get("/api/sensors", sensors.Get)
 	router.Get("/api/devices", devices.Get)
+	router.Get("/api/ws", ws.handleConnections)
 
 	return &Server{
 		router: router,

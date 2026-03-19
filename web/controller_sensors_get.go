@@ -4,19 +4,19 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"smart-home/internal"
 	"smart-home/model"
-	"smart-home/mqtt"
 
 	"gorm.io/gorm"
 )
 
-func NewSensorsController(db *gorm.DB, s *mqtt.Storage) *SensorsController {
+func NewSensorsController(db *gorm.DB, s *internal.Storage) *SensorsController {
 	return &SensorsController{db: db, s: s}
 }
 
 type SensorsController struct {
 	db *gorm.DB
-	s  *mqtt.Storage
+	s  *internal.Storage
 }
 
 func (c *SensorsController) Get(w http.ResponseWriter, r *http.Request) {
@@ -29,26 +29,14 @@ func (c *SensorsController) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	currentEvents := c.s.GetBuffer()
 
-	events := []SensorEvent{}
+	events := []*SensorEvent{}
 	for _, dbRecord := range dbRecords {
-		record := SensorEvent{
-			DeviceId:  dbRecord.DeviceId,
-			Timestamp: dbRecord.DeviceTime.Unix(),
-			Period:    dbRecord.Period,
-			Power:     dbRecord.Power,
-			Current:   dbRecord.Current,
-		}
+		record := NewSensorEvent(&dbRecord)
 		events = append(events, record)
 	}
 
 	for _, currentEvent := range currentEvents {
-		record := SensorEvent{
-			DeviceId:  currentEvent.DeviceId,
-			Timestamp: currentEvent.DeviceTime.Unix(),
-			Period:    currentEvent.Period,
-			Power:     currentEvent.Power,
-			Current:   currentEvent.Current,
-		}
+		record := NewSensorEvent(currentEvent)
 		events = append(events, record)
 	}
 

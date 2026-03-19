@@ -38,5 +38,6 @@ func (c *DevicesController) Get(w http.ResponseWriter, r *http.Request) {
 	slog.Info("[device][get] success")
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(records)
 }

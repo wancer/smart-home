@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"smart-home/config"
+	"smart-home/container"
 	"syscall"
 
 	"github.com/urfave/cli/v3"
@@ -24,7 +25,7 @@ func main() {
 		os.Exit(ExitErr)
 	}
 	slog.Info("Config loaded")
-	container, err := BuildContainer(cfg)
+	container, err := container.Build(cfg)
 	if err != nil {
 		slog.Error("Config error", "err", err)
 		os.Exit(ExitErr)
@@ -37,7 +38,7 @@ func main() {
 				Name:  "run",
 				Usage: "",
 				Action: func(ctx context.Context, _ *cli.Command) error {
-					if err := container.Mqtt.Run(cfg); err != nil {
+					if err := container.Mqtt.Run(); err != nil {
 						return err
 					}
 					defer container.Mqtt.Shutdown()

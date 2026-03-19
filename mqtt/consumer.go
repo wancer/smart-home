@@ -3,7 +3,7 @@ package mqtt
 import (
 	"fmt"
 	"log/slog"
-	"smart-home/config"
+	"smart-home/internal"
 	"sync"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -23,27 +23,39 @@ var connectLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err
 	slog.Info("Connection lost", "err", err)
 }
 
+type WsBroadcaster interface {
+	Send(channel string, in any)
+}
+
 type MqttConsumer struct {
-	Storage *Storage
-	Client  mqtt.Client
-	wg      *sync.WaitGroup
-	topics  []string
+	Storage   *internal.Storage
+	Client    mqtt.Client
+	wg        *sync.WaitGroup
+	topics    []string
+	ws        WsBroadcaster // interface
+	deviceMap *internal.DeviceMap
 }
 
-func NewMqttConsumer(s *Storage, c mqtt.Client) *MqttConsumer {
+func NewMqttConsumer(
+	s *internal.Storage,
+	c mqtt.Client,
+	ws WsBroadcaster, // interface
+	deviceMap *internal.DeviceMap,
+) *MqttConsumer {
 	return &MqttConsumer{
-		Storage: s,
-		Client:  c,
-		wg:      &sync.WaitGroup{},
-		topics:  []string{},
+		Storage:   s,
+		Client:    c,
+		wg:        &sync.WaitGroup{},
+		topics:    []string{},
+		ws:        ws,
+		deviceMap: deviceMap,
 	}
-
 }
 
-func (c *MqttConsumer) Run(cfg *config.Config) error {
-	for _, device := range cfg.Devices {
+func (c *MqttConsumer) Run() error {
+	for _, device := range c.deviceMap.GetAll() {
 		topic := fmt.Sprintf("tele/%s/SENSOR", device.Topic)
-		token := c.Client.Subscribe(topic, 1, GetSensorsHandler(c.wg, &device, c.Storage))
+		token := c.Client.Subscribe(topic, 1, GetSensorsHandler(c.wg, device, c.Storage, c.ws))
 		token.Wait()
 		slog.Debug("Subscribed to topic", "topic", topic)
 		c.topics = append(c.topics, topic)
