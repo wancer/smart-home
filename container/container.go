@@ -12,9 +12,11 @@ import (
 )
 
 type Container struct {
-	Mqtt      *mqtt.MqttConsumer
-	DeviceMap *internal.DeviceMap
-	Web       *web.Server
+	Mqtt         *mqtt.MqttConsumer
+	DeviceMap    *internal.DeviceMap
+	Web          *web.Server
+	Storage      *internal.Storage
+	EventHandler *mqtt.EventHandler
 }
 
 func Build(cfg *config.Config) (*Container, error) {
@@ -44,8 +46,8 @@ func Build(cfg *config.Config) (*Container, error) {
 	}
 
 	ws := web.NewWebSocketServer()
-
-	mqtt := mqtt.NewMqttConsumer(storage, mqttClient, ws, deviceMap)
+	eventHandler := mqtt.NewEventHandler(deviceMap, storage, ws)
+	mqtt := mqtt.NewMqttConsumer(mqttClient, deviceMap, eventHandler)
 
 	sensorsCtl := web.NewSensorsController(db, storage)
 	devicesCtl := web.NewDevicesController(db)
@@ -53,9 +55,11 @@ func Build(cfg *config.Config) (*Container, error) {
 	webServer := web.NewWebServer(router, ws, sensorsCtl, devicesCtl)
 
 	c := Container{
-		Mqtt:      mqtt,
-		DeviceMap: deviceMap,
-		Web:       webServer,
+		Mqtt:         mqtt,
+		DeviceMap:    deviceMap,
+		Web:          webServer,
+		Storage:      storage,
+		EventHandler: eventHandler,
 	}
 
 	return &c, nil

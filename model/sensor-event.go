@@ -13,7 +13,7 @@ type SensorEventModel struct {
 	ApparentPower uint        `gorm:"not null"`
 	ReactivePower uint        `gorm:"not null"`
 	Current       float32     `gorm:"not null"`
-	Voltage       uint        `gorm:"not null,default:220"`
+	Voltage       uint        `gorm:"not null"`
 }
 
 func (SensorEventModel) TableName() string {

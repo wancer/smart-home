@@ -4,6 +4,7 @@ import (
 	"maps"
 	"slices"
 	"smart-home/model"
+	"strings"
 )
 
 type DeviceMap struct {
@@ -20,6 +21,12 @@ func NewDeviceMap(devices []*model.DeviceModel) *DeviceMap {
 }
 
 func (d *DeviceMap) GetByTopic(topic string) *model.DeviceModel {
+	if pos1 := strings.Index(topic, "/"); pos1 != -1 {
+		pos1++
+		pos2 := strings.Index(topic[pos1:], "/") + pos1
+		topic = topic[pos1:pos2]
+	}
+
 	return d.devices[topic]
 }
 

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"smart-home/internal"
-	"sync"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
@@ -28,40 +27,51 @@ type WsBroadcaster interface {
 }
 
 type MqttConsumer struct {
-	Storage   *internal.Storage
 	Client    mqtt.Client
-	wg        *sync.WaitGroup
 	topics    []string
-	ws        WsBroadcaster // interface
 	deviceMap *internal.DeviceMap
+	handler   *EventHandler
 }
 
 func NewMqttConsumer(
-	s *internal.Storage,
 	c mqtt.Client,
-	ws WsBroadcaster, // interface
 	deviceMap *internal.DeviceMap,
+	handler *EventHandler,
 ) *MqttConsumer {
 	return &MqttConsumer{
-		Storage:   s,
 		Client:    c,
-		wg:        &sync.WaitGroup{},
 		topics:    []string{},
-		ws:        ws,
 		deviceMap: deviceMap,
+		handler:   handler,
 	}
 }
 
 func (c *MqttConsumer) Run() error {
 	for _, device := range c.deviceMap.GetAll() {
 		topic := fmt.Sprintf("tele/%s/SENSOR", device.Topic)
-		token := c.Client.Subscribe(topic, 1, GetSensorsHandler(c.wg, device, c.Storage, c.ws))
+		token := c.Client.Subscribe(topic, 1, c.handler.handleSensorEvent)
 		token.Wait()
 		slog.Debug("Subscribed to topic", "topic", topic)
 		c.topics = append(c.topics, topic)
 	}
 
 	slog.Info("Mqtt listener started")
+
+	for _, device := range c.deviceMap.GetAll() {
+		topic := fmt.Sprintf("stat/%s/POWER", device.Topic)
+		token := c.Client.Subscribe(topic, 1, c.handler.handlePowerEvent)
+		token.Wait()
+		slog.Debug("Subscribed to topic", "topic", topic)
+		c.topics = append(c.topics, topic)
+	}
+
+	for _, device := range c.deviceMap.GetAll() {
+		topic := fmt.Sprintf("cmnd/%s/POWER", device.Topic)
+		token := c.Client.Publish(topic, 1, false, "")
+		token.Wait()
+		slog.Debug("Send to topic", "topic", topic)
+		c.topics = append(c.topics, topic)
+	}
 
 	return nil
 }
@@ -72,9 +82,4 @@ func (c *MqttConsumer) Shutdown() {
 	}
 	c.Client.Disconnect(250)
 	slog.Info("Mqqt unsubscribed and disconnected")
-
-	// Wait for the goroutine to finish
-	c.wg.Wait()
-	c.Storage.Shutdown()
-	slog.Info("Storage flushed")
 }

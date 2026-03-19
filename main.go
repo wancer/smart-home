@@ -41,18 +41,16 @@ func main() {
 					if err := container.Mqtt.Run(); err != nil {
 						return err
 					}
-					defer container.Mqtt.Shutdown()
 
-					// Gracefully shut down server
-					// ctxTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
-					// defer cancel()
+					defer container.Mqtt.Shutdown()
+					defer container.Storage.Shutdown()
+					defer container.EventHandler.Shutdown()
 
 					var err error
 					go func() {
 						err = container.Web.Start(cfg.WebHost, ctx)
 					}()
 
-					// Wait for interrupt signal
 					quit := make(chan os.Signal, 1)
 					signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 					<-quit
