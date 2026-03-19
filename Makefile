@@ -5,7 +5,7 @@ libs:
 .PHONY: update
 update:
 	go get -u ./...
-	make dep
+	make libs
 
 .PHONY: build
 build:
