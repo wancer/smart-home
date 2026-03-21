@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -19,10 +20,21 @@ func NewWebServer(
 	ws *WebSocketServer,
 	sensors *SensorsController,
 	devices *DevicesController,
+	auth *AuthController,
 ) *Server {
 	router.Get("/api/sensors", sensors.Get)
 	router.Get("/api/devices", devices.Get)
 	router.Get("/api/ws", ws.handleConnections)
+	router.Post("/api/auth/login", auth.Login)
+	router.Options(
+		"/api/auth/login",
+		func(w http.ResponseWriter, r *http.Request) {
+
+			fmt.Println("123")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Accept")
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		},
+	)
 
 	return &Server{
 		router: router,

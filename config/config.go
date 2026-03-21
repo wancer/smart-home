@@ -27,11 +27,18 @@ type StorageConfig struct {
 	FlushPeriod time.Duration `yaml:"flushPeriod"`
 }
 
+type GoogleOauth struct {
+	RedirectURL   string   `yaml:"redirectUrl"`
+	ClientSecret  string   `yaml:"secret"`
+	AllowedEmails []string `yaml:"allowedEmails"`
+}
+
 type Config struct {
 	WebHost string        `yaml:"host"`
 	Mqtt    MqttConfig    `yaml:"mqtt"`
 	Devices []Device      `yaml:"devices"`
 	Storage StorageConfig `yaml:"storage"`
+	Oauth   *GoogleOauth  `yaml:"oauth"`
 }
 
 func Load() (*Config, error) {

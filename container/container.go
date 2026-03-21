@@ -51,8 +51,15 @@ func Build(cfg *config.Config) (*Container, error) {
 
 	sensorsCtl := web.NewSensorsController(db, storage)
 	devicesCtl := web.NewDevicesController(db)
+	authCtl := web.NewAuthController(cfg.Oauth)
 	router := chi.NewMux()
-	webServer := web.NewWebServer(router, ws, sensorsCtl, devicesCtl)
+	webServer := web.NewWebServer(
+		router,
+		ws,
+		sensorsCtl,
+		devicesCtl,
+		authCtl,
+	)
 
 	c := Container{
 		Mqtt:         mqtt,
