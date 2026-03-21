@@ -59,6 +59,6 @@ func (c *DeviceControlController) Do(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c.pub.SendSetPower(device, parsed.Value == "ON")
-
+	slog.Error("[device][control] success", "deviceId", parsed.DeviceId, "parameter", parsed.Parameter, "value", parsed.Value)
 	w.WriteHeader(http.StatusOK)
 }
