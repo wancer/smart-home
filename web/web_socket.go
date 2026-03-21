@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"smart-home/internal"
 	"smart-home/model"
 
 	"github.com/gorilla/websocket"
@@ -68,6 +69,8 @@ func (s *WebSocketServer) Send(channel string, in any) {
 	switch v := in.(type) {
 	case *model.SensorEventModel:
 		message.Body = NewSensorEvent(v)
+	case *internal.DeviceState:
+		message.Body = NewDeviceEvent(v)
 	default:
 		slog.Error("not supported type", "input", in)
 	}

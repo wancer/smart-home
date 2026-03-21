@@ -30,6 +30,15 @@ func (d *DeviceMap) GetByTopic(topic string) *model.DeviceModel {
 	return d.devices[topic]
 }
 
+func (d *DeviceMap) GeyById(id uint) *model.DeviceModel {
+	for _, device := range d.devices {
+		if device.ID == id {
+			return device
+		}
+	}
+	return nil
+}
+
 func (d *DeviceMap) GetAll() []*model.DeviceModel {
 	values := slices.Collect(maps.Values(d.devices))
 	return values

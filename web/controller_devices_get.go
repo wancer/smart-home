@@ -17,17 +17,8 @@ type DevicesController struct {
 
 func (c *DevicesController) Get(w http.ResponseWriter, r *http.Request) {
 	records := []*Device{}
-	for id, state := range c.deviceStates.GetAll() {
-		record := &Device{
-			ID:   id,
-			Name: state.Device.Name,
-			State: &DeviceState{
-				On:      state.On,
-				Power:   state.Power,
-				Voltage: state.Voltage,
-				Current: state.Current,
-			},
-		}
+	for _, state := range c.deviceStates.GetAll() {
+		record := NewDeviceEvent(state)
 		if state.LastUpdate != nil {
 			record.State.LastUpdate = valueToPointer(state.LastUpdate.Unix())
 		}

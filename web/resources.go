@@ -1,6 +1,7 @@
 package web
 
 import (
+	"smart-home/internal"
 	"smart-home/model"
 )
 
@@ -21,6 +22,19 @@ func NewSensorEvent(dbRecord *model.SensorEventModel) *SensorEvent {
 		Power:     dbRecord.Power,
 		Current:   dbRecord.Current,
 		Voltage:   dbRecord.Voltage,
+	}
+}
+
+func NewDeviceEvent(state *internal.DeviceState) *Device {
+	return &Device{
+		ID:   state.Device.ID,
+		Name: state.Device.Name,
+		State: &DeviceState{
+			On:      state.On,
+			Power:   state.Power,
+			Voltage: state.Voltage,
+			Current: state.Current,
+		},
 	}
 }
 

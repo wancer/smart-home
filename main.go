@@ -39,11 +39,12 @@ func main() {
 				Name:  "run",
 				Usage: "",
 				Action: func(ctx context.Context, _ *cli.Command) error {
-					if err := container.Mqtt.Run(); err != nil {
+					if err := container.MqttConsumer.Run(); err != nil {
 						return err
 					}
+					container.MqttPublisher.PublishAllStates()
 
-					defer container.Mqtt.Shutdown()
+					defer container.MqttConsumer.Shutdown()
 					defer container.Storage.Shutdown()
 					defer container.EventHandler.Shutdown()
 

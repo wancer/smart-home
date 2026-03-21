@@ -12,11 +12,12 @@ import (
 )
 
 type Container struct {
-	Mqtt         *mqtt.MqttConsumer
-	DeviceMap    *internal.DeviceMap
-	Web          *web.Server
-	Storage      *internal.Storage
-	EventHandler *mqtt.EventHandler
+	MqttConsumer  *mqtt.Consumer
+	MqttPublisher *mqtt.Publisher
+	DeviceMap     *internal.DeviceMap
+	Web           *web.Server
+	Storage       *internal.Storage
+	EventHandler  *mqtt.EventHandler
 }
 
 func Build(cfg *config.Config) (*Container, error) {
@@ -49,11 +50,13 @@ func Build(cfg *config.Config) (*Container, error) {
 	ws := web.NewWebSocketServer()
 
 	eventHandler := mqtt.NewEventHandler(deviceMap, storage, ws, states)
-	mqtt := mqtt.NewMqttConsumer(mqttClient, deviceMap, eventHandler)
+	consumer := mqtt.NewMqttConsumer(mqttClient, deviceMap, eventHandler)
+	publisher := mqtt.NewPublisher(mqttClient, deviceMap)
 
 	tokenAuth := jwtauth.New("HS256", []byte(cfg.Web.Jwt.Secret), nil)
 	sensorsCtl := web.NewSensorsController(db, storage)
 	devicesCtl := web.NewDevicesController(states)
+	deviceControlCtl := web.NewDeviceControlController(publisher, deviceMap)
 	authCtl := web.NewAuthController(cfg.Web.Oauth, tokenAuth)
 
 	webServer := web.NewWebServer(
@@ -62,15 +65,17 @@ func Build(cfg *config.Config) (*Container, error) {
 		ws,
 		sensorsCtl,
 		devicesCtl,
+		deviceControlCtl,
 		authCtl,
 	)
 
 	c := Container{
-		Mqtt:         mqtt,
-		DeviceMap:    deviceMap,
-		Web:          webServer,
-		Storage:      storage,
-		EventHandler: eventHandler,
+		MqttConsumer:  consumer,
+		MqttPublisher: publisher,
+		DeviceMap:     deviceMap,
+		Web:           webServer,
+		Storage:       storage,
+		EventHandler:  eventHandler,
 	}
 
 	return &c, nil
