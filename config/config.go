@@ -9,6 +9,28 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type CorsConfig struct {
+	Allowed bool   `yaml:"allowed"`
+	Host    string `yaml:"host"`
+}
+
+type JwtConfig struct {
+	Secret string `yaml:"secret"`
+}
+
+type GoogleOauth struct {
+	RedirectURL   string   `yaml:"redirectUrl"`
+	ClientSecret  string   `yaml:"secret"`
+	AllowedEmails []string `yaml:"allowedEmails"`
+}
+
+type WebConfig struct {
+	Host  string       `yaml:"host"`
+	Cors  *CorsConfig  `yaml:"cors"`
+	Oauth *GoogleOauth `yaml:"oauth"`
+	Jwt   *JwtConfig   `yaml:"jwt"`
+}
+
 type MqttConfig struct {
 	DSN      string `yaml:"dsn"`
 	User     string `yaml:"user"`
@@ -27,18 +49,11 @@ type StorageConfig struct {
 	FlushPeriod time.Duration `yaml:"flushPeriod"`
 }
 
-type GoogleOauth struct {
-	RedirectURL   string   `yaml:"redirectUrl"`
-	ClientSecret  string   `yaml:"secret"`
-	AllowedEmails []string `yaml:"allowedEmails"`
-}
-
 type Config struct {
-	WebHost string        `yaml:"host"`
-	Mqtt    MqttConfig    `yaml:"mqtt"`
-	Devices []Device      `yaml:"devices"`
-	Storage StorageConfig `yaml:"storage"`
-	Oauth   *GoogleOauth  `yaml:"oauth"`
+	Web     *WebConfig     `yaml:"web"`
+	Mqtt    *MqttConfig    `yaml:"mqtt"`
+	Devices []Device       `yaml:"devices"`
+	Storage *StorageConfig `yaml:"storage"`
 }
 
 func Load() (*Config, error) {

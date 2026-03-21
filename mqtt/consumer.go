@@ -70,7 +70,6 @@ func (c *MqttConsumer) Run() error {
 		token := c.Client.Publish(topic, 1, false, "")
 		token.Wait()
 		slog.Debug("Send to topic", "topic", topic)
-		c.topics = append(c.topics, topic)
 	}
 
 	return nil

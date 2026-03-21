@@ -1,54 +1,57 @@
 package web
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"slices"
 	"smart-home/config"
 
+	"github.com/go-chi/jwtauth/v5"
 	"google.golang.org/api/oauth2/v2"
 )
 
 type AuthController struct {
-	cfg *config.GoogleOauth
+	cfg       *config.GoogleOauth
+	tokenAuth *jwtauth.JWTAuth
 }
 
-func NewAuthController(cfg *config.GoogleOauth) *AuthController {
+func NewAuthController(
+	cfg *config.GoogleOauth,
+	tokenAuth *jwtauth.JWTAuth,
+) *AuthController {
 	return &AuthController{
-		cfg: cfg,
+		cfg:       cfg,
+		tokenAuth: tokenAuth,
 	}
 }
 
-type MyRequest struct {
+type AuthRequest struct {
 	Credentials string `json:"credential"`
 	ClientId    string `json:"clientId"`
 }
 
-func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Accept")
+type AuthResponse struct {
+	Token string `json:"token"`
+}
 
+func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		slog.Error("[auth][login] error", "err", err)
-		http.Error(w, http.StatusText(500), 500)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	fmt.Println(string(body))
 
-	var parsed MyRequest
+	var parsed AuthRequest
 	err = json.Unmarshal(body, &parsed)
 	if err != nil {
 		slog.Error("[auth][login] error", "err", err)
-		http.Error(w, http.StatusText(500), 500)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	// ctx := context.Background()
 	var httpClient = &http.Client{}
 	oauth2Service, err := oauth2.New(httpClient)
 	tokenInfoCall := oauth2Service.Tokeninfo()
@@ -56,44 +59,30 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 	tokenInfo, err := tokenInfoCall.Do()
 	if err != nil {
 		slog.Error("[auth][login] error", "err", err)
-		http.Error(w, http.StatusText(500), 500)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	fmt.Println(tokenInfo)
+	if !slices.Contains(c.cfg.AllowedEmails, tokenInfo.Email) {
+		slog.Error("[auth][login] not allowed", "err", err)
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
 
-	good := slices.Contains(c.cfg.AllowedEmails, tokenInfo.Email)
+	tokenData := map[string]interface{}{"user_id": 123}
+	_, tokenString, err := c.tokenAuth.Encode(tokenData)
+	if err != nil {
+		slog.Error("[auth][login] error", "err", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(good)
+	slog.Info("[auth][login] success")
+	response := AuthResponse{
+		Token: tokenString,
+	}
+	json.NewEncoder(w).Encode(response)
 }
 
-// SendRequest sends an HTTP request with the given method, URL, access token, body, and headers.
-func SendRequest(ctx context.Context, methodType, url, accessToken string, body io.Reader, headers map[string]string) ([]byte, error) {
-
-	// Create a new HTTP request with the provided context, method, URL, and body.
-	serverRequest, err := http.NewRequestWithContext(ctx, methodType, url, body)
-	if err != nil {
-		return nil, err // Return error if request creation fails.
-	}
-
-	// Set headers for the request.
-	for key, value := range headers {
-		serverRequest.Header.Set(key, value)
-	}
-
-	// Execute the HTTP request.
-	resp, err := http.DefaultClient.Do(serverRequest)
-	if err != nil {
-		return nil, err // Return error if request execution fails.
-	}
-	defer resp.Body.Close() // Ensure response body is closed after reading.
-
-	// Read and return the response body.
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err // Return error if reading response body fails.
-	}
-
-	return respBody, nil
+func (c *AuthController) Verify(w http.ResponseWriter, r *http.Request) {
 }

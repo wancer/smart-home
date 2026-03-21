@@ -18,6 +18,7 @@ const (
 )
 
 func main() {
+	config.InitLogger()
 	slog.Info("Starting")
 	cfg, err := config.Load()
 	if err != nil {
@@ -48,7 +49,7 @@ func main() {
 
 					var err error
 					go func() {
-						err = container.Web.Start(cfg.WebHost, ctx)
+						err = container.Web.Start(ctx)
 					}()
 
 					quit := make(chan os.Signal, 1)

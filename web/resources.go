@@ -1,14 +1,16 @@
 package web
 
-import "smart-home/model"
+import (
+	"smart-home/model"
+)
 
 type SensorEvent struct {
-	DeviceId  uint    `json:"DeviceId"`
-	Timestamp int64   `json:"DeviceTime"`
-	Period    uint    `json:"Period"`
-	Power     uint    `json:"Power"`
-	Current   float32 `json:"Current"`
-	Voltage   uint    `json:"Voltage"`
+	DeviceId  uint    `json:"deviceId"`
+	Timestamp int64   `json:"deviceTime"`
+	Period    uint    `json:"period"`
+	Power     uint    `json:"power"`
+	Current   float32 `json:"current"`
+	Voltage   uint    `json:"voltage"`
 }
 
 func NewSensorEvent(dbRecord *model.SensorEventModel) *SensorEvent {
@@ -22,7 +24,16 @@ func NewSensorEvent(dbRecord *model.SensorEventModel) *SensorEvent {
 	}
 }
 
+type DeviceState struct {
+	On         *bool    `json:"on"`
+	LastUpdate *int64   `json:"last"`
+	Power      *uint    `json:"power"`
+	Current    *float32 `json:"current"`
+	Voltage    *uint    `json:"voltage"`
+}
+
 type Device struct {
-	ID   uint   `json:"id"`
-	Name string `json:"name"`
+	ID    uint         `json:"id"`
+	Name  string       `json:"name"`
+	State *DeviceState `json:"state"`
 }

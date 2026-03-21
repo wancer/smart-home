@@ -1,4 +1,18 @@
-host: "127.0.0.1:3000"
+web:
+  host: "127.0.0.1:3000"
+
+  cors:
+    allowed: true
+    host: "http://localhost"
+
+  oauth:
+    redirectUrl: "127.0.0.1"
+    secret: ""
+    allowedEmails:
+      - test@mail.com
+
+  jwt:
+    secret: ""
 
 mqtt:
   dsn: "tcp://localhost:1882"

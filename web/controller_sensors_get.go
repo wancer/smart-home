@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"smart-home/internal"
 	"smart-home/model"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -20,11 +21,11 @@ type SensorsController struct {
 }
 
 func (c *SensorsController) Get(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	dbRecords, err := gorm.G[model.SensorEventModel](c.db).Order("id DESC").Find(ctx)
+	now := time.Now()
+	dbRecords, err := gorm.G[model.SensorEventModel](c.db).Where("device_time > ?", now.AddDate(0, 0, -1).Format(time.DateTime)).Order("id DESC").Find(r.Context())
 	if err != nil {
 		slog.Error("[sensors][get] error", "err", err)
-		http.Error(w, http.StatusText(500), 500)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	currentEvents := c.s.GetBuffer()
@@ -41,8 +42,5 @@ func (c *SensorsController) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("[sensors][get] success")
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(events)
 }

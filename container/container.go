@@ -6,7 +6,7 @@ import (
 	"smart-home/mqtt"
 	"smart-home/web"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/jwtauth/v5"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -35,6 +35,7 @@ func Build(cfg *config.Config) (*Container, error) {
 	}
 
 	deviceMap := internal.NewDeviceMap(devices)
+	states := internal.NewStateStorage(deviceMap)
 	storage, err := internal.NewStorage(db, cfg, deviceMap)
 	if err != nil {
 		return nil, err
@@ -46,15 +47,18 @@ func Build(cfg *config.Config) (*Container, error) {
 	}
 
 	ws := web.NewWebSocketServer()
-	eventHandler := mqtt.NewEventHandler(deviceMap, storage, ws)
+
+	eventHandler := mqtt.NewEventHandler(deviceMap, storage, ws, states)
 	mqtt := mqtt.NewMqttConsumer(mqttClient, deviceMap, eventHandler)
 
+	tokenAuth := jwtauth.New("HS256", []byte(cfg.Web.Jwt.Secret), nil)
 	sensorsCtl := web.NewSensorsController(db, storage)
-	devicesCtl := web.NewDevicesController(db)
-	authCtl := web.NewAuthController(cfg.Oauth)
-	router := chi.NewMux()
+	devicesCtl := web.NewDevicesController(states)
+	authCtl := web.NewAuthController(cfg.Web.Oauth, tokenAuth)
+
 	webServer := web.NewWebServer(
-		router,
+		cfg.Web,
+		tokenAuth,
 		ws,
 		sensorsCtl,
 		devicesCtl,

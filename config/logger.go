@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-func InitLogger(_ *Config) {
+func InitLogger() {
 	logger := slog.New(
 		slog.NewJSONHandler(
 			os.Stdout,

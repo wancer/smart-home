@@ -4,40 +4,41 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"smart-home/model"
-
-	"gorm.io/gorm"
+	"smart-home/internal"
 )
 
-func NewDevicesController(db *gorm.DB) *DevicesController {
-	return &DevicesController{db: db}
+func NewDevicesController(deviceStates *internal.StateStorage) *DevicesController {
+	return &DevicesController{deviceStates: deviceStates}
 }
 
 type DevicesController struct {
-	db *gorm.DB
+	deviceStates *internal.StateStorage
 }
 
 func (c *DevicesController) Get(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	dbRecords, err := gorm.G[model.DeviceModel](c.db).Find(ctx)
-	if err != nil {
-		slog.Error("[device][get] error", "err", err)
-		http.Error(w, http.StatusText(500), 500)
-		return
-	}
-
-	records := []Device{}
-	for _, dbRecord := range dbRecords {
-		record := Device{
-			ID:   dbRecord.ID,
-			Name: dbRecord.Name,
+	records := []*Device{}
+	for id, state := range c.deviceStates.GetAll() {
+		record := &Device{
+			ID:   id,
+			Name: state.Device.Name,
+			State: &DeviceState{
+				On:      state.On,
+				Power:   state.Power,
+				Voltage: state.Voltage,
+				Current: state.Current,
+			},
 		}
+		if state.LastUpdate != nil {
+			record.State.LastUpdate = valueToPointer(state.LastUpdate.Unix())
+		}
+
 		records = append(records, record)
 	}
 
 	slog.Info("[device][get] success")
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(records)
+}
+
+func valueToPointer[V any](v V) *V {
+	return &v
 }

@@ -15,18 +15,21 @@ type EventHandler struct {
 	deviceMap *internal.DeviceMap
 	storage   *internal.Storage
 	ws        WsBroadcaster // interface
+	states    *internal.StateStorage
 }
 
 func NewEventHandler(
 	deviceMap *internal.DeviceMap,
 	storage *internal.Storage,
 	ws WsBroadcaster,
+	states *internal.StateStorage,
 ) *EventHandler {
 	return &EventHandler{
 		wg:        &sync.WaitGroup{},
 		deviceMap: deviceMap,
 		storage:   storage,
 		ws:        ws,
+		states:    states,
 	}
 }
 
@@ -55,9 +58,20 @@ func (c *EventHandler) handleSensorEvent(client mqtt.Client, msg mqtt.Message) {
 	c.storage.StoreDaily(event, device)
 
 	c.ws.Send("sensor", m)
+
+	state := c.states.GetById(device.ID)
+	state.Current = &m.Current
+	state.Power = &m.Power
+	state.Voltage = &m.Voltage
+	state.LastUpdate = &m.RealTime
 }
 
 func (c *EventHandler) handlePowerEvent(client mqtt.Client, msg mqtt.Message) {
+	device := c.deviceMap.GetByTopic(msg.Topic())
+
+	isOn := string(msg.Payload()) == "ON"
+	c.states.GetById(device.ID).On = &isOn
+
 	slog.Info("sensor", "event", string(msg.Payload()), "topic", msg.Topic())
 }
 
