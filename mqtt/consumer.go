@@ -65,6 +65,22 @@ func (c *Consumer) Run() error {
 		c.topics = append(c.topics, topic)
 	}
 
+	for _, device := range c.deviceMap.GetAll() {
+		topic := fmt.Sprintf("stat/%s/RESULT", device.Topic)
+		token := c.client.Subscribe(topic, 1, c.handler.handleResult)
+		token.Wait()
+		slog.Debug("Subscribed to topic", "topic", topic)
+		c.topics = append(c.topics, topic)
+	}
+
+	for _, device := range c.deviceMap.GetAll() {
+		topic := fmt.Sprintf("stat/%s/STATUS10", device.Topic)
+		token := c.client.Subscribe(topic, 1, c.handler.handleState)
+		token.Wait()
+		slog.Debug("Subscribed to topic", "topic", topic)
+		c.topics = append(c.topics, topic)
+	}
+
 	return nil
 }
 

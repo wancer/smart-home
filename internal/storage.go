@@ -92,7 +92,7 @@ func (s *Storage) Flush() {
 		if err := s.db.Save(&r).Error; err != nil {
 			slog.Error(err.Error())
 		}
-		slog.Debug("stored sensor", "r", r)
+		//slog.Debug("stored sensor", "r", r)
 	}
 
 	slog.Info(fmt.Sprintf("Stored %d events", len(buffer)))

@@ -24,12 +24,12 @@ type SensorData struct {
 	Total          float32     `json:"Total"`          // Total Energy usage including Today
 	Yesterday      float32     `json:"Yesterday"`      // Total Energy usage between 00:00 and 24:00 yesterday
 	Today          float32     `json:"Today"`          // Total Energy usage today from 00:00 until now
-	Period         int         `json:"Period"`         // Energy usage between previous message and now
-	Power          int         `json:"Power"`          // Current effective power load
-	ApparentPower  int         `json:"ApparentPower"`  // Power load on the cable = sqrt(Power^2 + ReactivePower^2)
-	ReactivePower  int         `json:"ReactivePower"`  // Reactive load
+	Period         uint        `json:"Period"`         // Energy usage between previous message and now
+	Power          uint        `json:"Power"`          // Current effective power load
+	ApparentPower  uint        `json:"ApparentPower"`  // Power load on the cable = sqrt(Power^2 + ReactivePower^2)
+	ReactivePower  uint        `json:"ReactivePower"`  // Reactive load
 	Factor         float32     `json:"Factor"`         // The ratio of the real power flowing to the load to the apparent power in the circuit
-	Voltage        int         `json:"Voltage"`        // Current line voltage
+	Voltage        uint        `json:"Voltage"`        // Current line voltage
 	Current        float32     `json:"Current"`        // Current line current
 }
 

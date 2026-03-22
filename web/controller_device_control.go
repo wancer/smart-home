@@ -2,11 +2,14 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"smart-home/internal"
+	"smart-home/model"
 	"smart-home/mqtt"
+	"strconv"
 )
 
 type DeviceControlController struct {
@@ -45,11 +48,6 @@ func (c *DeviceControlController) Do(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	if parsed.Parameter != "power" {
-		slog.Error("[device][control] error", "err", err)
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
 
 	device := c.deviceMap.GeyById(parsed.DeviceId)
 	if device == nil {
@@ -58,7 +56,30 @@ func (c *DeviceControlController) Do(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.pub.SendSetPower(device, parsed.Value == "ON")
-	slog.Error("[device][control] success", "deviceId", parsed.DeviceId, "parameter", parsed.Parameter, "value", parsed.Value)
+	err = c.handle(&parsed, device)
+	if err != nil {
+		slog.Error("[device][control] error", "err", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	slog.Info("[device][control] success", "deviceId", parsed.DeviceId, "parameter", parsed.Parameter, "value", parsed.Value)
 	w.WriteHeader(http.StatusOK)
+}
+
+func (c *DeviceControlController) handle(r *DeviceControlRequest, d *model.DeviceModel) error {
+	switch r.Parameter {
+	case "power":
+		c.pub.OnOff(d, r.Value == "ON")
+	case "voltage":
+		volts, err := strconv.Atoi(r.Value)
+		if err != nil {
+			return err
+		}
+		c.pub.SetVoltage(d, volts)
+	default:
+		return fmt.Errorf("unknown type: %s", r.Parameter)
+	}
+
+	return nil
 }

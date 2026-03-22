@@ -18,14 +18,14 @@ const (
 )
 
 func main() {
-	config.InitLogger()
-	slog.Info("Starting")
 	cfg, err := config.Load()
 	if err != nil {
-		slog.Error("Config error", "err", err)
-		os.Exit(ExitErr)
+		panic(err)
 	}
+
+	config.InitLogger(cfg)
 	slog.Info("Config loaded")
+
 	container, err := container.Build(cfg)
 	if err != nil {
 		slog.Error("Config error", "err", err)

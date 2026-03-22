@@ -6,6 +6,7 @@ import (
 	"smart-home/event"
 	"smart-home/internal"
 	"sync"
+	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
@@ -51,7 +52,7 @@ func (c *EventHandler) handleSensorEvent(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	slog.Debug("sensor", "event", string(msg.Payload()))
+	//	slog.Debug("sensor", "event", string(msg.Payload()))
 	model := toModel(event, device)
 
 	c.storage.Store(model)
@@ -67,6 +68,10 @@ func (c *EventHandler) handleSensorEvent(client mqtt.Client, msg mqtt.Message) {
 }
 
 func (c *EventHandler) handlePowerEvent(client mqtt.Client, msg mqtt.Message) {
+	c.wg.Add(1)
+	defer c.wg.Done()
+
+	slog.Debug("power", "event", string(msg.Payload()))
 	device := c.deviceMap.GetByTopic(msg.Topic())
 
 	isOn := string(msg.Payload()) == "ON"
@@ -74,6 +79,44 @@ func (c *EventHandler) handlePowerEvent(client mqtt.Client, msg mqtt.Message) {
 	state.On = &isOn
 
 	c.ws.Send("state", state)
+}
+
+func (c *EventHandler) handleState(client mqtt.Client, msg mqtt.Message) {
+	c.wg.Add(1)
+	defer c.wg.Done()
+
+	device := c.deviceMap.GetByTopic(msg.Topic())
+
+	var event *event.Status10
+	err := json.Unmarshal(msg.Payload(), &event)
+	if err != nil {
+		slog.Error(
+			"CANT_PARSE_MSG",
+			"err", err,
+			"topic", msg.Topic(),
+			"payload", msg.Payload(),
+		)
+		return
+	}
+
+	now := time.Now()
+
+	slog.Debug("state", "event", string(msg.Payload()))
+
+	state := c.states.GetById(device.ID)
+	state.Current = &event.StatusSNS.Energy.Current
+	state.Power = &event.StatusSNS.Energy.Power
+	state.Voltage = &event.StatusSNS.Energy.Voltage
+	state.LastUpdate = &now
+
+	c.ws.Send("state", state)
+}
+
+func (c *EventHandler) handleResult(_ mqtt.Client, msg mqtt.Message) {
+	c.wg.Add(1)
+	defer c.wg.Done()
+
+	slog.Debug("result", "event", string(msg.Payload()), "topic", msg.Topic())
 }
 
 func (c *EventHandler) Shutdown() {

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -54,6 +55,11 @@ type Config struct {
 	Mqtt    *MqttConfig    `yaml:"mqtt"`
 	Devices []Device       `yaml:"devices"`
 	Storage *StorageConfig `yaml:"storage"`
+	Logger  *LoggerConfig  `yaml:"logger"`
+}
+
+type LoggerConfig struct {
+	Level slog.Level `yaml:"level"`
 }
 
 func Load() (*Config, error) {

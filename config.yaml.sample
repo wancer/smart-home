@@ -30,3 +30,6 @@ storage:
   driver: "sqlite"
   dsn: "database.db"
   flushPeriod: 5m
+
+logger:
+  level: "INFO" # see slog
