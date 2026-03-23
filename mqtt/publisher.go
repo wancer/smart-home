@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"smart-home/internal"
 	"smart-home/model"
-	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
@@ -27,9 +26,13 @@ func NewPublisher(
 
 func (p *Publisher) PublishAllStates() {
 	for _, device := range p.deviceMap.GetAll() {
-		p.GetOnOff(device)
-		p.GetState(device)
+		p.PublishStates(device)
 	}
+}
+
+func (p *Publisher) PublishStates(device *model.DeviceModel) {
+	p.GetOnOff(device)
+	p.GetState(device)
 }
 
 func (p *Publisher) GetOnOff(device *model.DeviceModel) {
@@ -54,17 +57,11 @@ func (p *Publisher) GetState(device *model.DeviceModel) {
 func (p *Publisher) SetVoltage(device *model.DeviceModel, voltage int) {
 	value := fmt.Sprintf("%d", voltage)
 	p.publish(device.Topic, "VoltageSet", value)
-
-	time.Sleep(5 * time.Second)
-	p.GetState(device)
 }
 
 func (p *Publisher) SetPower(device *model.DeviceModel, volts uint, power int) {
-	value := fmt.Sprintf("%d, %d", volts, power)
+	value := fmt.Sprintf("%d, %d", power, volts)
 	p.publish(device.Topic, "PowerSet", value)
-
-	time.Sleep(5 * time.Second)
-	p.GetState(device)
 }
 
 func (p *Publisher) publish(device string, command string, value string) {

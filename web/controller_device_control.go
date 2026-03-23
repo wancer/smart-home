@@ -9,6 +9,7 @@ import (
 	"smart-home/internal"
 	"smart-home/mqtt"
 	"strconv"
+	"time"
 )
 
 type DeviceControlController struct {
@@ -61,6 +62,10 @@ func (c *DeviceControlController) Do(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
+	// Device takes up to 3 sec to get data after control.
+	time.Sleep(3 * time.Second)
+	// Updating the state
+	c.pub.GetState(device.Device)
 
 	slog.Info("[device][control] success", "deviceId", parsed.DeviceId, "parameter", parsed.Parameter, "value", parsed.Value)
 	w.WriteHeader(http.StatusOK)

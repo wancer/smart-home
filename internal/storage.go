@@ -17,7 +17,7 @@ import (
 type Storage struct {
 	db                *gorm.DB
 	buffer            []*model.SensorEventModel
-	lock              sync.Mutex
+	lock              *sync.Mutex
 	lastHistory       map[uint]string
 	bufferFlushStream chan struct{}
 	deviceMap         *DeviceMap
@@ -30,6 +30,7 @@ func NewStorage(db *gorm.DB, cfg *config.Config, deviceMap *DeviceMap) (*Storage
 		deviceMap:         deviceMap,
 		lastHistory:       map[uint]string{},
 		bufferFlushStream: make(chan struct{}),
+		lock:              &sync.Mutex{},
 	}
 	err := s.init(cfg)
 	if err != nil {

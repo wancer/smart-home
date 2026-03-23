@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"smart-home/internal"
 	"smart-home/model"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
@@ -14,6 +15,7 @@ import (
 type WebSocketServer struct {
 	clients  map[*websocket.Conn]bool
 	upgrader websocket.Upgrader
+	lock     *sync.Mutex
 }
 
 func NewWebSocketServer() *WebSocketServer {
@@ -26,6 +28,7 @@ func NewWebSocketServer() *WebSocketServer {
 	return &WebSocketServer{
 		clients:  clients,
 		upgrader: upgrader,
+		lock:     &sync.Mutex{},
 	}
 }
 
@@ -80,6 +83,8 @@ func (s *WebSocketServer) Send(channel string, in any) {
 		slog.Error("serialization error", "err", err)
 	}
 
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	for client := range s.clients {
 		if err := client.WriteMessage(websocket.TextMessage, payload); err != nil {
 			fmt.Println("broadcast error:", err)

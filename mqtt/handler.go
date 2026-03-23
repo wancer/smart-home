@@ -74,9 +74,11 @@ func (c *EventHandler) handlePowerEvent(client mqtt.Client, msg mqtt.Message) {
 	slog.Debug("power", "event", string(msg.Payload()))
 	device := c.deviceMap.GetByTopic(msg.Topic())
 
+	now := time.Now()
 	isOn := string(msg.Payload()) == "ON"
 	state := c.states.GetById(device.ID)
 	state.On = &isOn
+	state.LastUpdate = &now
 
 	c.ws.Send("state", state)
 }
@@ -99,10 +101,9 @@ func (c *EventHandler) handleState(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	now := time.Now()
-
 	slog.Debug("state", "event", string(msg.Payload()))
 
+	now := time.Now()
 	state := c.states.GetById(device.ID)
 	state.Current = &event.StatusSNS.Energy.Current
 	state.Power = &event.StatusSNS.Energy.Power

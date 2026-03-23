@@ -126,6 +126,8 @@ func authLogMiddleware(next http.Handler) http.Handler {
 			r.Method+" "+r.URL.Path,
 			"Authorization",
 			r.Header.Get("Authorization"),
+			"Sec-WebSocket-Protocol",
+			r.Header.Get("Sec-WebSocket-Protocol"),
 		)
 	})
 }
