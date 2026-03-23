@@ -56,7 +56,7 @@ func Build(cfg *config.Config) (*Container, error) {
 	tokenAuth := jwtauth.New("HS256", []byte(cfg.Web.Jwt.Secret), nil)
 	sensorsCtl := web.NewSensorsController(db, storage)
 	devicesCtl := web.NewDevicesController(states)
-	deviceControlCtl := web.NewDeviceControlController(publisher, deviceMap)
+	deviceControlCtl := web.NewDeviceControlController(publisher, states)
 	authCtl := web.NewAuthController(cfg.Web.Oauth, tokenAuth)
 
 	webServer := web.NewWebServer(

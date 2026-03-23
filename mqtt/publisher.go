@@ -33,10 +33,7 @@ func (p *Publisher) PublishAllStates() {
 }
 
 func (p *Publisher) GetOnOff(device *model.DeviceModel) {
-	topic := fmt.Sprintf("cmnd/%s/POWER", device.Topic)
-	token := p.client.Publish(topic, 1, false, "")
-	token.Wait()
-	slog.Debug("Send to topic", "topic", topic)
+	p.publish(device.Topic, "POWER", "")
 }
 
 func (p *Publisher) OnOff(device *model.DeviceModel, state bool) {
@@ -47,26 +44,33 @@ func (p *Publisher) OnOff(device *model.DeviceModel, state bool) {
 		value = "OFF"
 	}
 
-	topic := fmt.Sprintf("cmnd/%s/POWER", device.Topic)
-	token := p.client.Publish(topic, 1, false, value)
-	token.Wait()
-	slog.Debug("Send to topic", "topic", topic)
+	p.publish(device.Topic, "POWER", value)
 }
 
 func (p *Publisher) GetState(device *model.DeviceModel) {
-	topic := fmt.Sprintf("cmnd/%s/STATUS10", device.Topic)
-	token := p.client.Publish(topic, 1, false, "10")
-	token.Wait()
-	slog.Debug("Send to topic", "topic", topic)
+	p.publish(device.Topic, "STATUS10", "10")
 }
 
 func (p *Publisher) SetVoltage(device *model.DeviceModel, voltage int) {
 	value := fmt.Sprintf("%d", voltage)
-	topic := fmt.Sprintf("cmnd/%s/VoltageSet", device.Topic)
-	token := p.client.Publish(topic, 1, false, value)
-	token.Wait()
-	slog.Debug("Send to topic", "topic", topic)
+	p.publish(device.Topic, "VoltageSet", value)
 
 	time.Sleep(5 * time.Second)
 	p.GetState(device)
+}
+
+func (p *Publisher) SetPower(device *model.DeviceModel, volts uint, power int) {
+	value := fmt.Sprintf("%d, %d", volts, power)
+	p.publish(device.Topic, "PowerSet", value)
+
+	time.Sleep(5 * time.Second)
+	p.GetState(device)
+}
+
+func (p *Publisher) publish(device string, command string, value string) {
+	topic := fmt.Sprintf("cmnd/%s/%s", device, command)
+	token := p.client.Publish(topic, 1, false, value)
+	token.Wait()
+
+	slog.Debug("Send to topic", "topic", topic, "value", value)
 }

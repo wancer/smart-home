@@ -7,23 +7,22 @@ import (
 	"log/slog"
 	"net/http"
 	"smart-home/internal"
-	"smart-home/model"
 	"smart-home/mqtt"
 	"strconv"
 )
 
 type DeviceControlController struct {
-	pub       *mqtt.Publisher
-	deviceMap *internal.DeviceMap
+	pub    *mqtt.Publisher
+	states *internal.StateStorage
 }
 
 func NewDeviceControlController(
 	pub *mqtt.Publisher,
-	deviceMap *internal.DeviceMap,
+	states *internal.StateStorage,
 ) *DeviceControlController {
 	return &DeviceControlController{
-		pub:       pub,
-		deviceMap: deviceMap,
+		pub:    pub,
+		states: states,
 	}
 }
 
@@ -49,7 +48,7 @@ func (c *DeviceControlController) Do(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	device := c.deviceMap.GeyById(parsed.DeviceId)
+	device := c.states.GetById(parsed.DeviceId)
 	if device == nil {
 		slog.Error("[device][control] error", "err", err)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
@@ -67,16 +66,27 @@ func (c *DeviceControlController) Do(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (c *DeviceControlController) handle(r *DeviceControlRequest, d *model.DeviceModel) error {
+func (c *DeviceControlController) handle(r *DeviceControlRequest, d *internal.DeviceState) error {
 	switch r.Parameter {
-	case "power":
-		c.pub.OnOff(d, r.Value == "ON")
+	case "on-off":
+		c.pub.OnOff(d.Device, r.Value == "ON")
 	case "voltage":
 		volts, err := strconv.Atoi(r.Value)
 		if err != nil {
 			return err
 		}
-		c.pub.SetVoltage(d, volts)
+		c.pub.SetVoltage(d.Device, volts)
+	case "power":
+		power, err := strconv.Atoi(r.Value)
+		if err != nil {
+			return err
+		}
+		volts := d.Voltage
+		if volts == nil {
+			return fmt.Errorf("Device don't have volts")
+		}
+
+		c.pub.SetPower(d.Device, *volts, power)
 	default:
 		return fmt.Errorf("unknown type: %s", r.Parameter)
 	}
