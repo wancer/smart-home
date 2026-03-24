@@ -55,6 +55,8 @@ func Build(cfg *config.Config) (*Container, error) {
 
 	tokenAuth := jwtauth.New("HS256", []byte(cfg.Web.Jwt.Secret), nil)
 	sensorsCtl := web.NewSensorsController(db, storage)
+	dailyCtl := web.NewSensorsDailyController(db, states)
+	configurableCtl := web.NewSensorsConfigurableController(db, states)
 	devicesCtl := web.NewDevicesController(states)
 	deviceControlCtl := web.NewDeviceControlController(publisher, states)
 	authCtl := web.NewAuthController(cfg.Web.Oauth, tokenAuth)
@@ -64,6 +66,8 @@ func Build(cfg *config.Config) (*Container, error) {
 		tokenAuth,
 		ws,
 		sensorsCtl,
+		dailyCtl,
+		configurableCtl,
 		devicesCtl,
 		deviceControlCtl,
 		authCtl,

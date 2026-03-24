@@ -6,12 +6,10 @@ import (
 	"time"
 )
 
-func toModel(e *event.SensorEvent, d *model.DeviceModel) *model.SensorEventModel {
-	now := time.Now()
-
+func toModel(e *event.SensorEvent, d *model.DeviceModel, now *time.Time) *model.SensorEventModel {
 	r := &model.SensorEventModel{}
 	r.DeviceId = d.ID
-	r.RealTime = now
+	r.RealTime = *now
 	r.DeviceTime = time.Time(e.Time)
 	r.Period = e.Energy.Period
 	r.Power = e.Energy.Power

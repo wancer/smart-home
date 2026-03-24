@@ -24,6 +24,8 @@ func NewWebServer(
 	tokenAuth *jwtauth.JWTAuth,
 	ws *WebSocketServer,
 	sensors *SensorsController,
+	daily *SensorsDailyController,
+	configurable *SensorsConfigurableController,
 	devices *DevicesController,
 	control *DeviceControlController,
 	auth *AuthController,
@@ -52,7 +54,10 @@ func NewWebServer(
 
 		// Routing
 		r.Get("/api/sensors", sensors.Get)
-		r.Get("/api/devices", devices.Get)
+		r.Get("/api/devices/{deviceId}/sensors/daily", daily.Get)
+		r.Get("/api/devices/{deviceId}/sensors/{duration}/{scale}", configurable.Get)
+		r.Get("/api/devices", devices.GetAll)
+		r.Get("/api/devices/{deviceId}", devices.Get)
 		r.Post("/api/device/control", control.Do)
 		r.Get("/api/auth/verify", auth.Verify)
 	})

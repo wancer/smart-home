@@ -13,6 +13,7 @@ type DeviceState struct {
 	Power      *uint
 	Current    *float32
 	Voltage    *uint
+	Today      *float32 // W*h
 }
 
 type StateStorage struct {

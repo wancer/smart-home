@@ -52,8 +52,9 @@ func (c *EventHandler) handleSensorEvent(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
+	now := time.Now()
 	//	slog.Debug("sensor", "event", string(msg.Payload()))
-	model := toModel(event, device)
+	model := toModel(event, device, &now)
 
 	c.storage.Store(model)
 	c.storage.StoreDaily(event, device)
@@ -61,10 +62,11 @@ func (c *EventHandler) handleSensorEvent(client mqtt.Client, msg mqtt.Message) {
 	c.ws.Send("sensor", model)
 
 	state := c.states.GetById(device.ID)
-	state.Current = &model.Current
-	state.Power = &model.Power
-	state.Voltage = &model.Voltage
-	state.LastUpdate = &model.RealTime
+	state.Current = &event.Energy.Current
+	state.Power = &event.Energy.Power
+	state.Voltage = &event.Energy.Voltage
+	state.Today = &event.Energy.Today
+	state.LastUpdate = &now
 }
 
 func (c *EventHandler) handlePowerEvent(client mqtt.Client, msg mqtt.Message) {
@@ -108,6 +110,7 @@ func (c *EventHandler) handleState(client mqtt.Client, msg mqtt.Message) {
 	state.Current = &event.StatusSNS.Energy.Current
 	state.Power = &event.StatusSNS.Energy.Power
 	state.Voltage = &event.StatusSNS.Energy.Voltage
+	state.Today = &event.StatusSNS.Energy.Today
 	state.LastUpdate = &now
 
 	c.ws.Send("state", state)
