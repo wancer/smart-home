@@ -8,6 +8,7 @@ import (
 	"smart-home/config"
 	"smart-home/container"
 	"syscall"
+	"time"
 
 	"github.com/urfave/cli/v3"
 )
@@ -39,12 +40,17 @@ func main() {
 				Name:  "run",
 				Usage: "",
 				Action: func(ctx context.Context, _ *cli.Command) error {
-					if err := container.MqttConsumer.Run(); err != nil {
-						return err
+					if token := container.MqttClient.Connect(); token.Wait() && token.Error() != nil {
+						return token.Error()
 					}
-					container.MqttPublisher.PublishAllStates()
 
-					defer container.MqttConsumer.Shutdown()
+					// ToDo: fix race condition when subscribe not yet finised
+					time.Sleep(1 * time.Second)
+					container.MqttPublisher.PublishAllStates()
+					monitorStop := container.StateMonitor.Run()
+
+					defer close(monitorStop)
+					defer container.MqttClient.Disconnect(10_000) // 10s == 10k ms
 					defer container.Storage.Shutdown()
 					defer container.EventHandler.Shutdown()
 

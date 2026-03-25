@@ -5,16 +5,16 @@ import (
 	"log/slog"
 	"smart-home/internal"
 
-	mqtt "github.com/eclipse/paho.mqtt.golang"
+	driver "github.com/eclipse/paho.mqtt.golang"
 )
 
 type Publisher struct {
-	client mqtt.Client // interface
+	client driver.Client // interface
 	states *internal.DeviceStateStorage
 }
 
 func NewPublisher(
-	c mqtt.Client,
+	c driver.Client,
 	states *internal.DeviceStateStorage,
 ) *Publisher {
 	return &Publisher{

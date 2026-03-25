@@ -65,8 +65,12 @@ func NewWebServer(
 
 	// Protected WS route
 	r.Group(func(r chi.Router) {
+		tokenFromWsProtocol := func(r *http.Request) string {
+			return r.Header.Get("Sec-WebSocket-Protocol")
+		}
+
 		verifier := func(ja *jwtauth.JWTAuth) func(http.Handler) http.Handler {
-			return jwtauth.Verify(ja, jwtauth.TokenFromQuery)
+			return jwtauth.Verify(ja, tokenFromWsProtocol)
 		}(tokenAuth)
 
 		// Auth

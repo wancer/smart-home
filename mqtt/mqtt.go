@@ -1,27 +1,43 @@
 package mqtt
 
 import (
+	"log/slog"
 	"smart-home/config"
+	"time"
 
-	mqtt "github.com/eclipse/paho.mqtt.golang"
+	driver "github.com/eclipse/paho.mqtt.golang"
 )
 
-func NewMqtt(cfg *config.Config) (mqtt.Client, error) {
-	opts := mqtt.NewClientOptions()
-	opts.AddBroker(cfg.Mqtt.DSN)
-	opts.SetClientID(cfg.Mqtt.ClientId)
-	opts.SetOrderMatters(false)
-	opts.SetAutoReconnect(true)
-	opts.SetDefaultPublishHandler(messagePubHandler)
-	opts.OnConnect = connectHandler
-	opts.OnConnectionLost = connectLostHandler
-	opts.Username = cfg.Mqtt.User
-	opts.Password = cfg.Mqtt.Pass
+var mqttMsgChan = make(chan driver.Message)
 
-	client := mqtt.NewClient(opts)
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		return nil, token.Error()
-	}
+var messagePubHandler driver.MessageHandler = func(client driver.Client, msg driver.Message) {
+	mqttMsgChan <- msg
+}
 
-	return client, nil
+var connectLostHandler driver.ConnectionLostHandler = func(client driver.Client, err error) {
+	slog.Error("Connection lost", "err", err)
+}
+
+var reconnectingHandler = func(c driver.Client, options *driver.ClientOptions) {
+	slog.Warn("...... mqtt reconnecting ......")
+}
+
+func NewMqtt(cfg *config.Config, consumer *Consumer) driver.Client {
+	opts := driver.NewClientOptions().
+		AddBroker(cfg.Mqtt.DSN).
+		SetClientID(cfg.Mqtt.ClientId).
+		SetOrderMatters(false).                      // allows async
+		SetDefaultPublishHandler(messagePubHandler). // consumes afer connection corrupted
+		SetOnConnectHandler(consumer.Subscribe).
+		SetConnectionLostHandler(connectLostHandler).
+		SetReconnectingHandler(reconnectingHandler).
+		SetAutoReconnect(true).
+		SetMaxReconnectInterval(30 * time.Second).
+		SetUsername(cfg.Mqtt.User).
+		SetPassword(cfg.Mqtt.Pass).
+		SetCleanSession(true) // experimental
+
+	client := driver.NewClient(opts)
+
+	return client
 }

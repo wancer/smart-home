@@ -33,10 +33,11 @@ type WebConfig struct {
 }
 
 type MqttConfig struct {
-	DSN      string `yaml:"dsn"`
-	User     string `yaml:"user"`
-	Pass     string `yaml:"pass"`
-	ClientId string `yaml:"clientId"`
+	DSN          string `yaml:"dsn"`
+	User         string `yaml:"user"`
+	Pass         string `yaml:"pass"`
+	ClientId     string `yaml:"clientId"`
+	CleanSession bool   `yaml:"cleanSession"`
 }
 
 type Device struct {

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	mqtt "github.com/eclipse/paho.mqtt.golang"
+	driver "github.com/eclipse/paho.mqtt.golang"
 )
 
 type EventHandler struct {
@@ -33,7 +33,7 @@ func NewEventHandler(
 	}
 }
 
-func (c *EventHandler) handleSensorEvent(client mqtt.Client, msg mqtt.Message) {
+func (c *EventHandler) handleSensorEvent(client driver.Client, msg driver.Message) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 
@@ -68,7 +68,7 @@ func (c *EventHandler) handleSensorEvent(client mqtt.Client, msg mqtt.Message) {
 	state.LastUpdate = &now
 }
 
-func (c *EventHandler) handlePowerEvent(_ mqtt.Client, msg mqtt.Message) {
+func (c *EventHandler) handlePowerEvent(_ driver.Client, msg driver.Message) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 
@@ -88,7 +88,7 @@ func (c *EventHandler) handlePowerEvent(_ mqtt.Client, msg mqtt.Message) {
 	c.ws.Send("state", state)
 }
 
-func (c *EventHandler) handleState(_ mqtt.Client, msg mqtt.Message) {
+func (c *EventHandler) handleState(_ driver.Client, msg driver.Message) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 
@@ -118,7 +118,7 @@ func (c *EventHandler) handleState(_ mqtt.Client, msg mqtt.Message) {
 	c.ws.Send("state", state)
 }
 
-func (c *EventHandler) handleResult(client mqtt.Client, msg mqtt.Message) {
+func (c *EventHandler) handleResult(client driver.Client, msg driver.Message) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 
@@ -193,7 +193,7 @@ func (c *EventHandler) handleResult(client mqtt.Client, msg mqtt.Message) {
 	}
 }
 
-func (c *EventHandler) handleLedState(_ mqtt.Client, msg mqtt.Message) {
+func (c *EventHandler) handleLedState(_ driver.Client, msg driver.Message) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 
@@ -208,7 +208,7 @@ func (c *EventHandler) handleLedState(_ mqtt.Client, msg mqtt.Message) {
 	slog.Debug("mqqt-event LedState", "event", string(msg.Payload()))
 }
 
-func (c *EventHandler) handleLedPower(_ mqtt.Client, msg mqtt.Message) {
+func (c *EventHandler) handleLedPower(_ driver.Client, msg driver.Message) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 
@@ -223,7 +223,7 @@ func (c *EventHandler) handleLedPower(_ mqtt.Client, msg mqtt.Message) {
 	slog.Debug("mqqt-event LedPower1", "event", string(msg.Payload()))
 }
 
-func (c *EventHandler) handleTelePeriod(_ mqtt.Client, msg mqtt.Message) {
+func (c *EventHandler) handleTelePeriod(_ driver.Client, msg driver.Message) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 
@@ -238,7 +238,7 @@ func (c *EventHandler) handleTelePeriod(_ mqtt.Client, msg mqtt.Message) {
 	slog.Debug("mqqt-event TelePeriod", "event", string(msg.Payload()))
 }
 
-func (c *EventHandler) handleLedPwmMode(_ mqtt.Client, msg mqtt.Message) {
+func (c *EventHandler) handleLedPwmMode(_ driver.Client, msg driver.Message) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 
@@ -253,7 +253,7 @@ func (c *EventHandler) handleLedPwmMode(_ mqtt.Client, msg mqtt.Message) {
 	slog.Debug("mqqt-event LedPwmMode", "event", string(msg.Payload()))
 }
 
-func (c *EventHandler) handleLedPwmOff(_ mqtt.Client, msg mqtt.Message) {
+func (c *EventHandler) handleLedPwmOff(_ driver.Client, msg driver.Message) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 
@@ -268,7 +268,7 @@ func (c *EventHandler) handleLedPwmOff(_ mqtt.Client, msg mqtt.Message) {
 	slog.Debug("mqqt-event LedPwmOff", "event", string(msg.Payload()))
 }
 
-func (c *EventHandler) handleLedPwmOn(_ mqtt.Client, msg mqtt.Message) {
+func (c *EventHandler) handleLedPwmOn(_ driver.Client, msg driver.Message) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 
@@ -283,7 +283,7 @@ func (c *EventHandler) handleLedPwmOn(_ mqtt.Client, msg mqtt.Message) {
 	slog.Debug("mqqt-event LedPwmOn", "event", string(msg.Payload()))
 }
 
-func (c *EventHandler) handleTimezone(_ mqtt.Client, msg mqtt.Message) {
+func (c *EventHandler) handleTimezone(_ driver.Client, msg driver.Message) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 
@@ -294,7 +294,7 @@ func (c *EventHandler) handleTimezone(_ mqtt.Client, msg mqtt.Message) {
 	slog.Debug("mqqt-event Timezone", "event", string(msg.Payload()))
 }
 
-func (c *EventHandler) handleTimeStd(_ mqtt.Client, msg mqtt.Message) {
+func (c *EventHandler) handleTimeStd(_ driver.Client, msg driver.Message) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 
@@ -317,7 +317,7 @@ func (c *EventHandler) handleTimeStd(_ mqtt.Client, msg mqtt.Message) {
 	slog.Debug("mqqt-event TimeStd", "event", string(msg.Payload()))
 }
 
-func (c *EventHandler) handleTimeDst(_ mqtt.Client, msg mqtt.Message) {
+func (c *EventHandler) handleTimeDst(_ driver.Client, msg driver.Message) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 
@@ -340,7 +340,7 @@ func (c *EventHandler) handleTimeDst(_ mqtt.Client, msg mqtt.Message) {
 	slog.Debug("mqqt-event TimeDst", "event", string(msg.Payload()))
 }
 
-func (c *EventHandler) handleLogWarning(_ mqtt.Client, msg mqtt.Message) {
+func (c *EventHandler) handleLogWarning(_ driver.Client, msg driver.Message) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 

@@ -1,13 +1,13 @@
 package mqtt
 
-import mqtt "github.com/eclipse/paho.mqtt.golang"
+import driver "github.com/eclipse/paho.mqtt.golang"
 
 type pseudoMessage struct {
 	topic   string
 	payload []byte
 }
 
-func messageFromResult(msg mqtt.Message, newPayload []byte) *pseudoMessage {
+func messageFromResult(msg driver.Message, newPayload []byte) *pseudoMessage {
 	return &pseudoMessage{
 		topic:   msg.Topic(),
 		payload: newPayload,

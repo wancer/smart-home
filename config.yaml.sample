@@ -19,6 +19,7 @@ mqtt:
   user: "user"
   pass: "pass"
   clientId: "my-uniq-client"
+  cleanSession: false
 
 devices:
   - name: "Home"

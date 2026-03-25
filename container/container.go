@@ -6,14 +6,16 @@ import (
 	"smart-home/mqtt"
 	"smart-home/web"
 
+	driver "github.com/eclipse/paho.mqtt.golang"
 	"github.com/go-chi/jwtauth/v5"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 type Container struct {
-	MqttConsumer  *mqtt.Consumer
+	MqttClient    driver.Client // interface
 	MqttPublisher *mqtt.Publisher
+	StateMonitor  *mqtt.StateMonitor
 	DeviceMap     *internal.DeviceMap
 	Web           *web.Server
 	Storage       *internal.Storage
@@ -42,16 +44,12 @@ func Build(cfg *config.Config) (*Container, error) {
 		return nil, err
 	}
 
-	mqttClient, err := mqtt.NewMqtt(cfg)
-	if err != nil {
-		return nil, err
-	}
-
 	ws := web.NewWebSocketServer()
-
 	eventHandler := mqtt.NewEventHandler(storage, ws, states)
-	consumer := mqtt.NewMqttConsumer(mqttClient, states, eventHandler)
+	consumer := mqtt.NewMqttConsumer(states, eventHandler)
+	mqttClient := mqtt.NewMqtt(cfg, consumer)
 	publisher := mqtt.NewPublisher(mqttClient, states)
+	stateMonitor := mqtt.NewStateMonitor(ws, states)
 
 	tokenAuth := jwtauth.New("HS256", []byte(cfg.Web.Jwt.Secret), nil)
 	sensorsCtl := web.NewSensorsController(db, storage)
@@ -74,8 +72,9 @@ func Build(cfg *config.Config) (*Container, error) {
 	)
 
 	c := Container{
-		MqttConsumer:  consumer,
+		MqttClient:    mqttClient,
 		MqttPublisher: publisher,
+		StateMonitor:  stateMonitor,
 		DeviceMap:     deviceMap,
 		Web:           webServer,
 		Storage:       storage,
