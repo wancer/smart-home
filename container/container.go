@@ -36,8 +36,8 @@ func Build(cfg *config.Config) (*Container, error) {
 	}
 
 	deviceMap := internal.NewDeviceMap(devices)
-	states := internal.NewStateStorage(deviceMap)
-	storage, err := internal.NewStorage(db, cfg, deviceMap)
+	states := internal.NewDeviceStateStorage(devices)
+	storage, err := internal.NewStorage(db, cfg, states)
 	if err != nil {
 		return nil, err
 	}
@@ -49,16 +49,16 @@ func Build(cfg *config.Config) (*Container, error) {
 
 	ws := web.NewWebSocketServer()
 
-	eventHandler := mqtt.NewEventHandler(deviceMap, storage, ws, states)
-	consumer := mqtt.NewMqttConsumer(mqttClient, deviceMap, eventHandler)
-	publisher := mqtt.NewPublisher(mqttClient, deviceMap)
+	eventHandler := mqtt.NewEventHandler(storage, ws, states)
+	consumer := mqtt.NewMqttConsumer(mqttClient, states, eventHandler)
+	publisher := mqtt.NewPublisher(mqttClient, states)
 
 	tokenAuth := jwtauth.New("HS256", []byte(cfg.Web.Jwt.Secret), nil)
 	sensorsCtl := web.NewSensorsController(db, storage)
 	dailyCtl := web.NewSensorsDailyController(db, states)
-	configurableCtl := web.NewSensorsConfigurableController(db, states)
+	configurableCtl := web.NewSensorsConfigurableController(db, states, storage)
 	devicesCtl := web.NewDevicesController(states)
-	deviceControlCtl := web.NewDeviceControlController(publisher, states)
+	deviceControlCtl := web.NewDeviceControlController(publisher, states, config.GetNewTimezones())
 	authCtl := web.NewAuthController(cfg.Web.Oauth, tokenAuth)
 
 	webServer := web.NewWebServer(

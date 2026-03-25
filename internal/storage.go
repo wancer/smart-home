@@ -20,14 +20,14 @@ type Storage struct {
 	lock              *sync.Mutex
 	lastHistory       map[uint]string
 	bufferFlushStream chan struct{}
-	deviceMap         *DeviceMap
+	deviceMap         *DeviceStateStorage
 }
 
-func NewStorage(db *gorm.DB, cfg *config.Config, deviceMap *DeviceMap) (*Storage, error) {
+func NewStorage(db *gorm.DB, cfg *config.Config, deviceStates *DeviceStateStorage) (*Storage, error) {
 	s := &Storage{
 		db:                db,
 		buffer:            []*model.SensorEventModel{},
-		deviceMap:         deviceMap,
+		deviceMap:         deviceStates,
 		lastHistory:       map[uint]string{},
 		bufferFlushStream: make(chan struct{}),
 		lock:              &sync.Mutex{},
@@ -45,7 +45,7 @@ func (s *Storage) init(c *config.Config) error {
 	// Load last recorded date per device from sensor_event
 	for _, device := range s.deviceMap.GetAll() {
 		lastEvents, err := gorm.G[model.SensorHistoryModel](s.db).
-			Where("device_id = ?", device.ID).
+			Where("device_id = ?", device.Device.ID).
 			Order("date DESC").
 			Limit(1).
 			Find(ctx)
@@ -54,12 +54,12 @@ func (s *Storage) init(c *config.Config) error {
 		}
 
 		if len(lastEvents) == 0 {
-			slog.Warn("No last record for", "topic", device.Topic)
-			s.lastHistory[device.ID] = ""
+			slog.Warn("No last record for", "topic", device.Device.Topic)
+			s.lastHistory[device.Device.ID] = ""
 		} else {
 			lastEvent := lastEvents[0]
-			s.lastHistory[device.ID] = time.Time(lastEvent.Date).Format(time.DateOnly)
-			slog.Debug("Loaded last history", "topic", device.Topic, "device_id", device.ID, "last_date", s.lastHistory[device.ID])
+			s.lastHistory[device.Device.ID] = time.Time(lastEvent.Date).Format(time.DateOnly)
+			slog.Debug("Loaded last history", "topic", device.Device.Topic, "device_id", device.Device.ID, "last_date", s.lastHistory[device.Device.ID])
 		}
 	}
 
@@ -115,23 +115,23 @@ func (s *Storage) Store(m *model.SensorEventModel) {
 	slog.Debug("added to buffer", "event", m)
 }
 
-func (s *Storage) StoreDaily(e *event.SensorEvent, d *model.DeviceModel) {
+func (s *Storage) StoreDaily(e *event.SensorEvent, deviceId uint) {
 	eventYesterday := time.Time(e.Time).AddDate(0, 0, -1)
 	eventYesterdayStr := eventYesterday.Format(time.DateOnly)
-	if eventYesterdayStr == s.lastHistory[d.ID] {
+	if eventYesterdayStr == s.lastHistory[deviceId] {
 		return
 	}
 
 	history := model.SensorHistoryModel{}
 	history.Date = datatypes.Date(eventYesterday)
-	history.DeviceId = d.ID
+	history.DeviceId = deviceId
 	history.Power = e.Energy.Yesterday
 
 	if err := s.db.Save(&history).Error; err != nil {
 		slog.Error("CANT_SAVE_HISTORY", "err", err)
 	} else {
-		slog.Info("Save history", "date", eventYesterdayStr, "deviceId", d.ID)
-		s.lastHistory[d.ID] = eventYesterdayStr
+		slog.Info("Save history", "date", eventYesterdayStr, "deviceId", deviceId)
+		s.lastHistory[deviceId] = eventYesterdayStr
 	}
 }
 

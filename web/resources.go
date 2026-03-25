@@ -54,7 +54,7 @@ type Device struct {
 
 type DeviceSensorEvent struct {
 	Time          string   `json:"time"`
-	PowerConsumed *uint    `json:"powerConsumed"`
+	PowerConsumed *float32 `json:"powerConsumed"`
 	PowerAvg      *uint    `json:"powerAvg"`
 	CurrentAvg    *float32 `json:"currentAvg"`
 	VoltageAvg    *uint    `json:"voltageAvg"`
@@ -63,4 +63,14 @@ type DeviceSensorEvent struct {
 type DeviceSensorDailyEvent struct {
 	Date          string   `json:"date"`
 	PowerConsumed *float32 `json:"power"`
+}
+
+type DeviceConfig struct {
+	LedState   *uint   `json:"ledState"`
+	LedPower   *bool   `json:"ledPower"`
+	TelePeriod *uint   `json:"telePeriod"`
+	LedPwmMode *bool   `json:"ledPwmMode"`
+	LedPwmOff  *uint   `json:"ledPwmOff"`
+	LedPwmOn   *uint   `json:"ledPwmOn"`
+	Timezone   *string `json:"timezone"`
 }

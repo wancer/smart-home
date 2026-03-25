@@ -56,9 +56,10 @@ func NewWebServer(
 		r.Get("/api/sensors", sensors.Get)
 		r.Get("/api/devices/{deviceId}/sensors/daily", daily.Get)
 		r.Get("/api/devices/{deviceId}/sensors/{duration}/{scale}", configurable.Get)
+		r.Get("/api/devices/{deviceId}/control", control.Get)
+		r.Post("/api/devices/{deviceId}/control", control.Do)
 		r.Get("/api/devices", devices.GetAll)
 		r.Get("/api/devices/{deviceId}", devices.Get)
-		r.Post("/api/device/control", control.Do)
 		r.Get("/api/auth/verify", auth.Verify)
 	})
 

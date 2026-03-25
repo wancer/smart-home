@@ -6,24 +6,30 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"smart-home/config"
 	"smart-home/internal"
 	"smart-home/mqtt"
 	"strconv"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type DeviceControlController struct {
-	pub    *mqtt.Publisher
-	states *internal.StateStorage
+	pub       *mqtt.Publisher
+	states    *internal.DeviceStateStorage
+	timezones *config.TimezonesConfig
 }
 
 func NewDeviceControlController(
 	pub *mqtt.Publisher,
-	states *internal.StateStorage,
+	states *internal.DeviceStateStorage,
+	timezones *config.TimezonesConfig,
 ) *DeviceControlController {
 	return &DeviceControlController{
-		pub:    pub,
-		states: states,
+		pub:       pub,
+		states:    states,
+		timezones: timezones,
 	}
 }
 
@@ -31,6 +37,56 @@ type DeviceControlRequest struct {
 	DeviceId  uint   `json:"deviceId"`
 	Parameter string `json:"parameter"`
 	Value     string `json:"value"`
+}
+
+func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
+	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
+	if err != nil {
+		slog.Error("[sensors][daily] error", "err", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	state := c.states.GetById(uint(deviceId))
+	if state == nil {
+		slog.Error("[sensors][daily] error", "err", err)
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
+	stdFormatted := fmt.Sprintf(
+		"%d,%d,%d,%d,%d,%d",
+		state.Config.TimeStd.Hemisphere,
+		state.Config.TimeStd.Week,
+		state.Config.TimeStd.Month,
+		state.Config.TimeStd.Day,
+		state.Config.TimeStd.Hour,
+		state.Config.TimeStd.Offset,
+	)
+	dstFormatted := fmt.Sprintf(
+		"%d,%d,%d,%d,%d,%d",
+		state.Config.TimeDst.Hemisphere,
+		state.Config.TimeDst.Week,
+		state.Config.TimeDst.Month,
+		state.Config.TimeDst.Day,
+		state.Config.TimeDst.Hour,
+		state.Config.TimeDst.Offset,
+	)
+
+	timezone := c.timezones.GetByParameters(*state.Config.Timezone, stdFormatted, dstFormatted)
+
+	cfg := DeviceConfig{
+		LedState:   state.Config.LedState,
+		LedPower:   state.Config.LedPower,
+		TelePeriod: state.Config.TelePeriod,
+		LedPwmMode: state.Config.LedPower,
+		LedPwmOn:   state.Config.LedPwmOn,
+		LedPwmOff:  state.Config.LedPwmOff,
+		Timezone:   timezone,
+	}
+
+	slog.Info("[device][control-get] success")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(cfg)
 }
 
 func (c *DeviceControlController) Do(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +121,7 @@ func (c *DeviceControlController) Do(w http.ResponseWriter, r *http.Request) {
 	// Device takes up to 3 sec to get data after control.
 	time.Sleep(3 * time.Second)
 	// Updating the state
-	c.pub.GetState(device.Device)
+	c.pub.GetSensors(device.Device)
 
 	slog.Info("[device][control] success", "deviceId", parsed.DeviceId, "parameter", parsed.Parameter, "value", parsed.Value)
 	w.WriteHeader(http.StatusOK)

@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"smart-home/internal"
@@ -13,13 +14,24 @@ import (
 	"gorm.io/gorm"
 )
 
-func NewSensorsConfigurableController(db *gorm.DB, states *internal.StateStorage) *SensorsConfigurableController {
-	return &SensorsConfigurableController{db: db, states: states}
+const (
+	sensorsFreq = 15 // sec
+	secInMin    = 60
+	minInHour   = 60
+)
+
+func NewSensorsConfigurableController(
+	db *gorm.DB,
+	states *internal.DeviceStateStorage,
+	buffer *internal.Storage,
+) *SensorsConfigurableController {
+	return &SensorsConfigurableController{db: db, states: states, buffer: buffer}
 }
 
 type SensorsConfigurableController struct {
 	db     *gorm.DB
-	states *internal.StateStorage
+	states *internal.DeviceStateStorage
+	buffer *internal.Storage
 }
 
 func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Request) {
@@ -49,7 +61,7 @@ func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Reque
 	}
 
 	till := time.Now()
-	// till = till.Add(-time.Duration(time.Second * time.Second))
+	till = till.Truncate(time.Minute)
 	from := till.Add(-duration)
 	dbRecords, err := gorm.G[model.SensorEventModel](c.db).
 		Where("device_id = ?", state.Device.ID).
@@ -60,6 +72,21 @@ func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Reque
 		slog.Error("[sensors][configurable] error", "err", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
+	}
+
+	var format func(*time.Time) string
+	if scale > time.Hour {
+		format = func(t *time.Time) string { return t.Format(time.DateOnly) }
+	} else if scale == time.Hour {
+		format = func(t *time.Time) string { return fmt.Sprintf("%s %02d", t.Format(time.DateOnly), t.Hour()) }
+	} else {
+		format = func(t *time.Time) string { return fmt.Sprintf("%02d:%02d", t.Hour(), t.Minute()) }
+	}
+
+	for _, buffered := range c.buffer.GetBuffer() {
+		if buffered.DeviceId == state.Device.ID {
+			dbRecords = append(dbRecords, *buffered)
+		}
 	}
 
 	records := []*DeviceSensorEvent{}
@@ -75,7 +102,7 @@ func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Reque
 		}
 
 		record := &DeviceSensorEvent{
-			Time:          timeInStep.Format(time.TimeOnly),
+			Time:          format(&timeInStep),
 			PowerConsumed: nil,
 			PowerAvg:      nil,
 			CurrentAvg:    nil,
@@ -84,12 +111,12 @@ func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Reque
 
 		dbRecordsMatchCount := uint(len(dbRecordsMatch))
 		if dbRecordsMatchCount > 0 {
-			var powerConsumed uint = 0
+			var powerConsumed float32 = 0
 			var powerAvg uint = 0
 			var currentAvg float32 = 0
 			var voltageAvg uint = 0
 			for _, dbRecord := range dbRecordsMatch {
-				powerConsumed += dbRecord.Period
+				powerConsumed += float32(dbRecord.Power) * sensorsFreq / secInMin / minInHour
 				powerAvg += dbRecord.Power
 				currentAvg += dbRecord.Current
 				voltageAvg += dbRecord.Voltage

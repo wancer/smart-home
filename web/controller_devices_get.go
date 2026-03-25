@@ -10,27 +10,27 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func NewDevicesController(deviceStates *internal.StateStorage) *DevicesController {
+func NewDevicesController(deviceStates *internal.DeviceStateStorage) *DevicesController {
 	return &DevicesController{states: deviceStates}
 }
 
 type DevicesController struct {
-	states *internal.StateStorage
+	states *internal.DeviceStateStorage
 }
 
 func (c *DevicesController) GetAll(w http.ResponseWriter, r *http.Request) {
-	records := []*Device{}
+	events := map[uint]*Device{}
 	for _, state := range c.states.GetAll() {
-		record := NewDeviceEvent(state)
+		event := NewDeviceEvent(state)
 		if state.LastUpdate != nil {
-			record.State.LastUpdate = valueToPointer(state.LastUpdate.Unix())
+			event.State.LastUpdate = valueToPointer(state.LastUpdate.Unix())
 		}
 
-		records = append(records, record)
+		events[state.Device.ID] = event
 	}
 
 	slog.Info("[device][get-all] success")
-	json.NewEncoder(w).Encode(records)
+	json.NewEncoder(w).Encode(events)
 }
 
 func (c *DevicesController) Get(w http.ResponseWriter, r *http.Request) {

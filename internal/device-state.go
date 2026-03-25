@@ -2,11 +2,40 @@ package internal
 
 import (
 	"smart-home/model"
+	"strings"
 	"time"
 )
 
+type Device struct {
+	ID    uint
+	Name  string
+	Topic string
+}
+
+type TimeSwitch struct {
+	Day        uint
+	Hemisphere uint
+	Hour       uint
+	Month      uint
+	Offset     uint
+	Week       uint
+}
+
+type DeviceConfig struct {
+	LedState   *uint
+	LedPower   *bool
+	TelePeriod *uint
+	Timezone   *string
+	TimeStd    *TimeSwitch
+	TimeDst    *TimeSwitch
+	LedPwmMode *bool
+	LedPwmOff  *uint
+	LedPwmOn   *uint
+}
+
 type DeviceState struct {
-	Device *model.DeviceModel
+	Device *Device
+	Config *DeviceConfig
 
 	On         *bool
 	LastUpdate *time.Time
@@ -16,28 +45,49 @@ type DeviceState struct {
 	Today      *float32 // W*h
 }
 
-type StateStorage struct {
-	states map[uint]*DeviceState
+type DeviceStateStorage struct {
+	devices map[uint]*DeviceState
 }
 
-func NewStateStorage(devices *DeviceMap) *StateStorage {
+func NewDeviceStateStorage(devices []*model.DeviceModel) *DeviceStateStorage {
 	states := map[uint]*DeviceState{}
-	for _, device := range devices.GetAll() {
+	for _, device := range devices {
 		states[device.ID] = &DeviceState{
-			On:     nil,
-			Device: device,
+			On: nil,
+			Device: &Device{
+				ID:    device.ID,
+				Name:  device.Name,
+				Topic: device.Topic,
+			},
+			Config: &DeviceConfig{},
 		}
 	}
 
-	return &StateStorage{
-		states: states,
+	return &DeviceStateStorage{
+		devices: states,
 	}
 }
 
-func (d *StateStorage) GetById(id uint) *DeviceState {
-	return d.states[id]
+func (d *DeviceStateStorage) GetById(id uint) *DeviceState {
+	return d.devices[id]
 }
 
-func (d *StateStorage) GetAll() map[uint]*DeviceState {
-	return d.states
+func (d *DeviceStateStorage) GetAll() map[uint]*DeviceState {
+	return d.devices
+}
+
+func (d *DeviceStateStorage) GetByTopic(topic string) *DeviceState {
+	if pos1 := strings.Index(topic, "/"); pos1 != -1 {
+		pos1++
+		pos2 := strings.Index(topic[pos1:], "/") + pos1
+		topic = topic[pos1:pos2]
+	}
+
+	for _, device := range d.devices {
+		if device.Device.Topic == topic {
+			return device
+		}
+	}
+
+	return nil
 }

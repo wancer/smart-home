@@ -13,13 +13,13 @@ import (
 	"gorm.io/gorm"
 )
 
-func NewSensorsDailyController(db *gorm.DB, states *internal.StateStorage) *SensorsDailyController {
+func NewSensorsDailyController(db *gorm.DB, states *internal.DeviceStateStorage) *SensorsDailyController {
 	return &SensorsDailyController{db: db, states: states}
 }
 
 type SensorsDailyController struct {
 	db     *gorm.DB
-	states *internal.StateStorage
+	states *internal.DeviceStateStorage
 }
 
 func (c *SensorsDailyController) Get(w http.ResponseWriter, r *http.Request) {
