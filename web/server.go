@@ -65,12 +65,8 @@ func NewWebServer(
 
 	// Protected WS route
 	r.Group(func(r chi.Router) {
-		tokenFromWsProtocol := func(r *http.Request) string {
-			return r.Header.Get("Sec-WebSocket-Protocol")
-		}
-
 		verifier := func(ja *jwtauth.JWTAuth) func(http.Handler) http.Handler {
-			return jwtauth.Verify(ja, tokenFromWsProtocol)
+			return jwtauth.Verify(ja, jwtauth.TokenFromQuery)
 		}(tokenAuth)
 
 		// Auth
@@ -126,6 +122,13 @@ func authLogMiddleware(next http.Handler) http.Handler {
 
 		if wrapped.Status() == http.StatusOK {
 			return
+		}
+
+		// WS is handled in the WS module
+		if wrapped.Status() == 0 {
+			if r.URL.Path == "/api/ws" {
+				return
+			}
 		}
 
 		slog.Warn(

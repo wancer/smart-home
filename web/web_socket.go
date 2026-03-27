@@ -55,7 +55,6 @@ func (s *WebSocketServer) handleConnections(w http.ResponseWriter, r *http.Reque
 			break
 		}
 		slog.Info("Received WS message: " + string(msg))
-
 	}
 }
 
