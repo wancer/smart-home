@@ -51,10 +51,10 @@ func (init *DatabaseInitializer) syncDevices(cfgDevices []config.Device) ([]*mod
 	for _, cfgDevice := range cfgDevices {
 		dbDevice := match(cfgDevice, dbDevices)
 		if dbDevice == nil {
-			dbDevice := model.DeviceModel{}
+			dbDevice = &model.DeviceModel{}
 			dbDevice.Topic = cfgDevice.Topic
 			dbDevice.Name = cfgDevice.Name
-			if err := init.db.Save(&dbDevice).Error; err != nil {
+			if err := init.db.Create(&dbDevice).Error; err != nil {
 				return nil, err
 			}
 

@@ -4,9 +4,9 @@ import "time"
 
 type SensorEventModel struct {
 	ID            uint        `gorm:"primaryKey"`
-	DeviceId      uint        `gorm:"not null"`
+	DeviceId      uint        `gorm:"not null;index:idx_device_time,priority:2"`
 	Device        DeviceModel `gorm:"not null"`
-	RealTime      time.Time   `gorm:"not null"`
+	RealTime      time.Time   `gorm:"not null;index:idx_device_time,priority:1"`
 	DeviceTime    time.Time   `gorm:"not null"`
 	Period        uint        `gorm:"not null"`
 	Power         uint        `gorm:"not null"`
