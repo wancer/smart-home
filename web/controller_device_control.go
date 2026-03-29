@@ -78,7 +78,7 @@ func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
 		LedState:   state.Config.LedState,
 		LedPower:   state.Config.LedPower,
 		TelePeriod: state.Config.TelePeriod,
-		LedPwmMode: state.Config.LedPower,
+		LedPwmMode: state.Config.LedPwmMode,
 		LedPwmOn:   state.Config.LedPwmOn,
 		LedPwmOff:  state.Config.LedPwmOff,
 		Timezone:   timezone,
@@ -137,6 +137,20 @@ func (c *DeviceControlController) handle(r *DeviceControlRequest, d *internal.De
 			return err
 		}
 		c.pub.SetVoltage(d.Device, volts)
+	case "led-pwm-mode":
+		c.pub.SetLedPwmMode(d.Device, r.Value == "ON")
+	case "led-pwm-off":
+		value, err := strconv.Atoi(r.Value)
+		if err != nil {
+			return err
+		}
+		c.pub.SetLedPwmOn(d.Device, value)
+	case "led-pwm-on":
+		value, err := strconv.Atoi(r.Value)
+		if err != nil {
+			return err
+		}
+		c.pub.SetLedPwmOn(d.Device, value)
 	case "power":
 		power, err := strconv.Atoi(r.Value)
 		if err != nil {

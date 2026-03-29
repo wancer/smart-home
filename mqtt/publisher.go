@@ -100,12 +100,32 @@ func (p *Publisher) GetLedPwmMode(device *internal.Device) {
 	p.publish(device.Topic, "LedPwmMode", "")
 }
 
+func (p *Publisher) SetLedPwmMode(device *internal.Device, state bool) {
+	var value string
+	if state {
+		value = "ON"
+	} else {
+		value = "OFF"
+	}
+	p.publish(device.Topic, "LedPwmMode", value)
+}
+
 func (p *Publisher) GetLedPwmOff(device *internal.Device) {
 	p.publish(device.Topic, "LedPwmOff", "")
 }
 
+func (p *Publisher) SetLedPwmOff(device *internal.Device, value int) {
+	formatted := fmt.Sprintf("%d", value)
+	p.publish(device.Topic, "LedPwmOff", formatted)
+}
+
 func (p *Publisher) GetLedPwmOn(device *internal.Device) {
 	p.publish(device.Topic, "LedPwmOn", "")
+}
+
+func (p *Publisher) SetLedPwmOn(device *internal.Device, value int) {
+	formatted := fmt.Sprintf("%d", value)
+	p.publish(device.Topic, "LedPwmOn", formatted)
 }
 
 func (p *Publisher) publish(device string, command string, value string) {
