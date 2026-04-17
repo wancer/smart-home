@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -64,6 +65,44 @@ func main() {
 					<-quit
 
 					return err
+				},
+			},
+			{
+				Name:  "serve",
+				Usage: "",
+				Action: func(ctx context.Context, _ *cli.Command) error {
+					if token := container.MqttClient.Connect(); token.Wait() && token.Error() != nil {
+						return token.Error()
+					}
+
+					// ToDo: fix race condition when subscribe not yet finised
+					time.Sleep(1 * time.Second)
+					container.MqttPublisher.PublishAllStates()
+					monitorStop := container.StateMonitor.Run()
+
+					defer close(monitorStop)
+					defer container.MqttClient.Disconnect(10_000) // 10s == 10k ms
+					defer container.Storage.Shutdown()
+					defer container.EventHandler.Shutdown()
+
+					var err error
+					go func() {
+						err = container.Web.Start(ctx)
+					}()
+
+					quit := make(chan os.Signal, 1)
+					signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+					<-quit
+
+					return err
+				},
+			},
+			{
+				Name: "get-auth",
+				Action: func(_ context.Context, _ *cli.Command) error {
+					_, tokenString, _ := container.Auth.Encode(map[string]interface{}{"user_id": 123})
+					fmt.Sprintf("DEBUG: a sample jwt is %s\n\n", tokenString)
+					return nil
 				},
 			},
 		},

@@ -18,6 +18,7 @@ type EventHandler struct {
 	storage *internal.Storage
 	ws      WsBroadcaster // interface
 	states  *internal.DeviceStateStorage
+	p       *Publisher
 }
 
 func NewEventHandler(
@@ -31,6 +32,11 @@ func NewEventHandler(
 		ws:      ws,
 		states:  states,
 	}
+}
+
+// ToDo: make it right
+func (c *EventHandler) SetPublisher(p *Publisher) {
+	c.p = p
 }
 
 func (c *EventHandler) handleSensorEvent(client driver.Client, msg driver.Message) {
@@ -61,6 +67,10 @@ func (c *EventHandler) handleSensorEvent(client driver.Client, msg driver.Messag
 
 	c.ws.Send("sensor", model)
 
+	if state.Online == false {
+		state.Online = true
+		c.p.PublishStates(state.Device)
+	}
 	state.Current = &event.Energy.Current
 	state.Power = &event.Energy.Power
 	state.Voltage = &event.Energy.Voltage
@@ -109,6 +119,7 @@ func (c *EventHandler) handleState(_ driver.Client, msg driver.Message) {
 	slog.Debug("mqqt-event state", "event", string(msg.Payload()))
 
 	now := time.Now()
+	state.Online = true
 	state.Current = &event.StatusSNS.Energy.Current
 	state.Power = &event.StatusSNS.Energy.Power
 	state.Voltage = &event.StatusSNS.Energy.Voltage
@@ -116,6 +127,29 @@ func (c *EventHandler) handleState(_ driver.Client, msg driver.Message) {
 	state.LastUpdate = &now
 
 	c.ws.Send("state", state)
+}
+
+func (c *EventHandler) handleFirmware(_ driver.Client, msg driver.Message) {
+	c.wg.Add(1)
+	defer c.wg.Done()
+
+	state := c.states.GetByTopic(msg.Topic())
+
+	var event *event.Status2
+	err := json.Unmarshal(msg.Payload(), &event)
+	if err != nil {
+		slog.Error(
+			"CANT_PARSE_MSG",
+			"err", err,
+			"topic", msg.Topic(),
+			"payload", msg.Payload(),
+		)
+		return
+	}
+
+	slog.Warn("firmware", "event", string(msg.Payload()))
+
+	_ = state
 }
 
 func (c *EventHandler) handleResult(client driver.Client, msg driver.Message) {

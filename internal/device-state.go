@@ -37,6 +37,7 @@ type DeviceState struct {
 	Device *Device
 	Config *DeviceConfig
 
+	Online     bool
 	On         *bool
 	LastUpdate *time.Time
 	Power      *uint
@@ -53,7 +54,8 @@ func NewDeviceStateStorage(devices []*model.DeviceModel) *DeviceStateStorage {
 	states := map[uint]*DeviceState{}
 	for _, device := range devices {
 		states[device.ID] = &DeviceState{
-			On: nil,
+			Online: false,
+			On:     nil,
 			Device: &Device{
 				ID:    device.ID,
 				Name:  device.Name,

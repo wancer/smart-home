@@ -24,19 +24,18 @@ func (m *StateMonitor) Run() chan struct{} {
 			case <-ticker.C:
 				now := time.Now()
 				for _, state := range m.states.GetAll() {
-					if state.On == nil {
-						continue // already state unclear
-					}
-					if state.LastUpdate == nil {
-						slog.Warn("Marging as MIA", "deviceId", state.Device.ID)
-						state.On = nil // should be updated already
-						m.ws.Send("state", state)
+					if state.Online == false { // Already offline
 						continue
 					}
 
-					if now.Sub(*state.LastUpdate) > time.Minute {
-						slog.Warn("Marging as MIA", "deviceId", state.Device.ID)
-						state.On = nil // should be updated already
+					// should be updated already
+					if state.LastUpdate == nil || now.Sub(*state.LastUpdate) > time.Minute {
+						slog.Warn("Marking as MIA", "deviceId", state.Device.ID)
+						state.Online = false
+						state.On = nil
+						state.Current = nil
+						state.Voltage = nil
+						state.Power = nil
 						m.ws.Send("state", state)
 						continue
 					}

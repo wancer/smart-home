@@ -20,6 +20,7 @@ type Container struct {
 	Web           *web.Server
 	Storage       *internal.Storage
 	EventHandler  *mqtt.EventHandler
+	Auth          *jwtauth.JWTAuth
 }
 
 func Build(cfg *config.Config) (*Container, error) {
@@ -50,14 +51,16 @@ func Build(cfg *config.Config) (*Container, error) {
 	mqttClient := mqtt.NewMqtt(cfg, consumer)
 	publisher := mqtt.NewPublisher(mqttClient, states)
 	stateMonitor := mqtt.NewStateMonitor(ws, states)
+	eventHandler.SetPublisher(publisher)
 
 	tokenAuth := jwtauth.New("HS256", []byte(cfg.Web.Jwt.Secret), nil)
+
+	authCtl := web.NewAuthController(cfg.Web.Oauth, tokenAuth)
 	sensorsCtl := web.NewSensorsController(db, storage)
 	dailyCtl := web.NewSensorsDailyController(db, states)
 	configurableCtl := web.NewSensorsConfigurableController(db, states, storage)
 	devicesCtl := web.NewDevicesController(states)
 	deviceControlCtl := web.NewDeviceControlController(publisher, states, config.GetNewTimezones())
-	authCtl := web.NewAuthController(cfg.Web.Oauth, tokenAuth)
 
 	webServer := web.NewWebServer(
 		cfg.Web,
@@ -79,6 +82,8 @@ func Build(cfg *config.Config) (*Container, error) {
 		Web:           webServer,
 		Storage:       storage,
 		EventHandler:  eventHandler,
+
+		Auth: tokenAuth,
 	}
 
 	return &c, nil

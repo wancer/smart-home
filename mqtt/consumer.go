@@ -37,6 +37,7 @@ func (c *Consumer) Subscribe(client driver.Client) {
 		"stat/%s/POWER":    c.handler.handlePowerEvent,
 		"stat/%s/RESULT":   c.handler.handleResult,
 		"stat/%s/STATUS10": c.handler.handleState,
+		"stat/%s/STATUS2":  c.handler.handleFirmware,
 	}
 
 	for _, device := range c.deviceMap.GetAll() {

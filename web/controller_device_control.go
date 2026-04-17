@@ -53,26 +53,36 @@ func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stdFormatted := fmt.Sprintf(
-		"%d,%d,%d,%d,%d,%d",
-		state.Config.TimeStd.Hemisphere,
-		state.Config.TimeStd.Week,
-		state.Config.TimeStd.Month,
-		state.Config.TimeStd.Day,
-		state.Config.TimeStd.Hour,
-		state.Config.TimeStd.Offset,
-	)
-	dstFormatted := fmt.Sprintf(
-		"%d,%d,%d,%d,%d,%d",
-		state.Config.TimeDst.Hemisphere,
-		state.Config.TimeDst.Week,
-		state.Config.TimeDst.Month,
-		state.Config.TimeDst.Day,
-		state.Config.TimeDst.Hour,
-		state.Config.TimeDst.Offset,
-	)
+	var stdFormatted string
+	var dstFormatted string
+	var offset string
+	if state.Config.TimeStd != nil {
+		stdFormatted = fmt.Sprintf(
+			"%d,%d,%d,%d,%d,%d",
+			state.Config.TimeStd.Hemisphere,
+			state.Config.TimeStd.Week,
+			state.Config.TimeStd.Month,
+			state.Config.TimeStd.Day,
+			state.Config.TimeStd.Hour,
+			state.Config.TimeStd.Offset,
+		)
+	}
+	if state.Config.TimeDst != nil {
+		dstFormatted = fmt.Sprintf(
+			"%d,%d,%d,%d,%d,%d",
+			state.Config.TimeDst.Hemisphere,
+			state.Config.TimeDst.Week,
+			state.Config.TimeDst.Month,
+			state.Config.TimeDst.Day,
+			state.Config.TimeDst.Hour,
+			state.Config.TimeDst.Offset,
+		)
+	}
+	if state.Config.Timezone != nil {
+		offset = *state.Config.Timezone
+	}
 
-	timezone := c.timezones.GetByParameters(*state.Config.Timezone, stdFormatted, dstFormatted)
+	timezone := c.timezones.GetByParameters(offset, stdFormatted, dstFormatted)
 
 	cfg := DeviceConfig{
 		LedState:   state.Config.LedState,
@@ -137,6 +147,20 @@ func (c *DeviceControlController) handle(r *DeviceControlRequest, d *internal.De
 			return err
 		}
 		c.pub.SetVoltage(d.Device, volts)
+	case "tele-period":
+		period, err := strconv.Atoi(r.Value)
+		if err != nil {
+			return err
+		}
+		c.pub.SetTelePeriod(d.Device, period)
+	case "timezone":
+		timezone, err := c.timezones.Map(r.Value)
+		if err != nil {
+			return err
+		}
+		c.pub.SetTimezone(d.Device, timezone.Offset)
+		c.pub.SetTimeDst(d.Device, timezone.TimeDst)
+		c.pub.SetTimeStd(d.Device, timezone.TimeStd)
 	case "led-pwm-mode":
 		c.pub.SetLedPwmMode(d.Device, r.Value == "ON")
 	case "led-pwm-off":
