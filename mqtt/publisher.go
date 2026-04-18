@@ -10,12 +10,12 @@ import (
 
 type Publisher struct {
 	client driver.Client // interface
-	states *internal.DeviceStateStorage
+	states *internal.DeviceStateManager
 }
 
 func NewPublisher(
 	c driver.Client,
-	states *internal.DeviceStateStorage,
+	states *internal.DeviceStateManager,
 ) *Publisher {
 	return &Publisher{
 		client: c,
@@ -23,7 +23,9 @@ func NewPublisher(
 	}
 }
 
+// ToDo: move out of here, remove states dependency
 func (p *Publisher) PublishAllStates() {
+	return
 	for _, state := range p.states.GetAll() {
 		p.PublishStates(state.Device)
 	}

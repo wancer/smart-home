@@ -1,18 +1,22 @@
-package mqtt
+package internal
 
 import (
 	"log/slog"
-	"smart-home/internal"
+	"smart-home/event"
 	"time"
 )
 
-type StateMonitor struct {
-	ws     WsBroadcaster // interface
-	states *internal.DeviceStateStorage
+type WsBroadcaster interface {
+	Send(channel string, in any)
 }
 
-func NewStateMonitor(ws WsBroadcaster, states *internal.DeviceStateStorage) *StateMonitor {
-	return &StateMonitor{ws: ws, states: states}
+type StateMonitor struct {
+	dispatcher *event.Dispatcher
+	states     *DeviceStateManager
+}
+
+func NewStateMonitor(dispatcher *event.Dispatcher, states *DeviceStateManager) *StateMonitor {
+	return &StateMonitor{dispatcher: dispatcher, states: states}
 }
 
 func (m *StateMonitor) Run() chan struct{} {
@@ -31,12 +35,10 @@ func (m *StateMonitor) Run() chan struct{} {
 					// should be updated already
 					if state.LastUpdate == nil || now.Sub(*state.LastUpdate) > time.Minute {
 						slog.Warn("Marking as MIA", "deviceId", state.Device.ID)
-						state.Online = false
-						state.On = nil
-						state.Current = nil
-						state.Voltage = nil
-						state.Power = nil
-						m.ws.Send("state", state)
+						event := &event.InternalOfflineEvent{
+							DeviceId: state.Device.ID,
+						}
+						m.dispatcher.Dispatch(event)
 						continue
 					}
 				}

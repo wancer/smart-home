@@ -8,19 +8,15 @@ import (
 	driver "github.com/eclipse/paho.mqtt.golang"
 )
 
-type WsBroadcaster interface {
-	Send(channel string, in any)
-}
-
 type Consumer struct {
 	topics    []string
-	deviceMap *internal.DeviceStateStorage
-	handler   *EventHandler
+	deviceMap *internal.DeviceStateManager
+	handler   *EventParser
 }
 
 func NewMqttConsumer(
-	deviceMap *internal.DeviceStateStorage,
-	handler *EventHandler,
+	deviceMap *internal.DeviceStateManager,
+	handler *EventParser,
 ) *Consumer {
 	return &Consumer{
 		topics:    []string{},
@@ -33,13 +29,14 @@ func (c *Consumer) Subscribe(client driver.Client) {
 	slog.Info("Connected to MQTT Broker")
 
 	topicsToSubscribe := map[string]driver.MessageHandler{
-		"tele/%s/SENSOR":   c.handler.handleSensorEvent,
-		"stat/%s/POWER":    c.handler.handlePowerEvent,
-		"stat/%s/RESULT":   c.handler.handleResult,
-		"stat/%s/STATUS10": c.handler.handleState,
-		"stat/%s/STATUS2":  c.handler.handleFirmware,
+		"tele/%s/SENSOR":   c.handler.parseSensorEvent,
+		"stat/%s/POWER":    c.handler.parsePowerEvent,
+		"stat/%s/RESULT":   c.handler.parseResult,
+		"stat/%s/STATUS10": c.handler.parseState,
+		"stat/%s/STATUS2":  c.handler.parseFirmware,
 	}
 
+	// ToDo: move out of here, remove states dependency
 	for _, device := range c.deviceMap.GetAll() {
 		for topicTpl, handler := range topicsToSubscribe {
 			topic := fmt.Sprintf(topicTpl, device.Device.Topic)

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"smart-home/event"
 	"smart-home/internal"
-	"smart-home/model"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -58,23 +58,72 @@ func (s *WebSocketServer) handleConnections(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+func (s *WebSocketServer) Subscribe(dispatcher *event.Dispatcher, states *internal.DeviceStateManager) {
+	dispatcher.Subscribe(
+		"Power",
+		func(raw any) {
+			e := raw.(event.MqttEvent)
+			p := e.Payload.(*event.Power)
+
+			if p == nil {
+				slog.Error("No power state in the event")
+				return
+			}
+
+			deviceState := states.GetByTopic(e.Topic)
+			on := bool(*p)
+			wsEvent := WsStateEvent{
+				ID: deviceState.Device.ID,
+				On: &on,
+			}
+			s.Send("state", wsEvent)
+		},
+	)
+
+	dispatcher.Subscribe(
+		"Status10", // ToDo: map event name somehow
+		func(raw any) {
+			e := raw.(event.MqttEvent)
+			p := e.Payload.(*event.Status10)
+			deviceState := states.GetByTopic(e.Topic)
+			wsEvent := NewSensorFromEvent(p.StatusSNS, deviceState.Device)
+			s.Send("sensor", wsEvent)
+		},
+	)
+
+	dispatcher.Subscribe(
+		"SensorEvent",
+		func(raw any) {
+			e := raw.(event.MqttEvent)
+			p := e.Payload.(*event.SensorEvent)
+			deviceState := states.GetByTopic(e.Topic)
+			wsEvent := NewSensorFromEvent(p, deviceState.Device)
+			s.Send("sensor", wsEvent)
+		},
+	)
+
+	dispatcher.Subscribe(
+		"InternalOfflineEvent",
+		func(raw any) {
+			e := raw.(*event.InternalOfflineEvent)
+			wsEvent := WsStateEvent{
+				ID: e.DeviceId,
+				On: nil,
+			}
+			s.Send("state", wsEvent)
+		},
+	)
+}
+
 type WsMessage struct {
 	Channel string `json:"channel"`
 	Body    any    `json:"body"`
 }
 
-func (s *WebSocketServer) Send(channel string, in any) {
+func (s *WebSocketServer) Send(channel string, body any) {
 	message := WsMessage{
 		Channel: channel,
-	}
-
-	switch v := in.(type) {
-	case *model.SensorEventModel:
-		message.Body = NewSensorEvent(v)
-	case *internal.DeviceState:
-		message.Body = NewDeviceEvent(v)
-	default:
-		slog.Error("not supported type", "input", in)
+		Body:    body,
 	}
 
 	payload, err := json.Marshal(message)

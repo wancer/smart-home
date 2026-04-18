@@ -10,12 +10,12 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func NewDevicesController(deviceStates *internal.DeviceStateStorage) *DevicesController {
+func NewDevicesController(deviceStates *internal.DeviceStateManager) *DevicesController {
 	return &DevicesController{states: deviceStates}
 }
 
 type DevicesController struct {
-	states *internal.DeviceStateStorage
+	states *internal.DeviceStateManager
 }
 
 func (c *DevicesController) GetAll(w http.ResponseWriter, r *http.Request) {

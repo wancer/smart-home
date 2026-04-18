@@ -2,7 +2,9 @@ package container
 
 import (
 	"smart-home/config"
+	"smart-home/event"
 	"smart-home/internal"
+	"smart-home/internal/handler"
 	"smart-home/mqtt"
 	"smart-home/web"
 
@@ -15,11 +17,11 @@ import (
 type Container struct {
 	MqttClient    driver.Client // interface
 	MqttPublisher *mqtt.Publisher
-	StateMonitor  *mqtt.StateMonitor
+	StateMonitor  *internal.StateMonitor
 	DeviceMap     *internal.DeviceMap
 	Web           *web.Server
 	Storage       *internal.Storage
-	EventHandler  *mqtt.EventHandler
+	EventHandler  *mqtt.EventParser
 	Auth          *jwtauth.JWTAuth
 }
 
@@ -39,19 +41,23 @@ func Build(cfg *config.Config) (*Container, error) {
 	}
 
 	deviceMap := internal.NewDeviceMap(devices)
-	states := internal.NewDeviceStateStorage(devices)
+	states := internal.NewDeviceStateManager(devices)
 	storage, err := internal.NewStorage(db, cfg, states)
 	if err != nil {
 		return nil, err
 	}
 
 	ws := web.NewWebSocketServer()
-	eventHandler := mqtt.NewEventHandler(storage, ws, states)
-	consumer := mqtt.NewMqttConsumer(states, eventHandler)
+	dispatcher := event.NewDispatcher()
+	eventParser := mqtt.NewEventParser(dispatcher)
+
+	consumer := mqtt.NewMqttConsumer(states, eventParser)
 	mqttClient := mqtt.NewMqtt(cfg, consumer)
 	publisher := mqtt.NewPublisher(mqttClient, states)
-	stateMonitor := mqtt.NewStateMonitor(ws, states)
-	eventHandler.SetPublisher(publisher)
+	stateMonitor := internal.NewStateMonitor(dispatcher, states)
+
+	eventHandler := handler.NewEventHandler(states, publisher, storage)
+	eventHandler.Subscribe(dispatcher, states)
 
 	tokenAuth := jwtauth.New("HS256", []byte(cfg.Web.Jwt.Secret), nil)
 
@@ -81,7 +87,6 @@ func Build(cfg *config.Config) (*Container, error) {
 		DeviceMap:     deviceMap,
 		Web:           webServer,
 		Storage:       storage,
-		EventHandler:  eventHandler,
 
 		Auth: tokenAuth,
 	}

@@ -17,13 +17,13 @@ import (
 
 type DeviceControlController struct {
 	pub       *mqtt.Publisher
-	states    *internal.DeviceStateStorage
+	states    *internal.DeviceStateManager
 	timezones *config.TimezonesConfig
 }
 
 func NewDeviceControlController(
 	pub *mqtt.Publisher,
-	states *internal.DeviceStateStorage,
+	states *internal.DeviceStateManager,
 	timezones *config.TimezonesConfig,
 ) *DeviceControlController {
 	return &DeviceControlController{
@@ -84,6 +84,14 @@ func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
 
 	timezone := c.timezones.GetByParameters(offset, stdFormatted, dstFormatted)
 
+	firmware := FirmwareConfig{
+		Version: state.Firmware.Version,
+	}
+	if state.Firmware.BuiltAt != nil {
+		formatted := state.Firmware.BuiltAt.Format(time.DateTime)
+		firmware.BuildAt = &formatted
+	}
+
 	cfg := DeviceConfig{
 		LedState:   state.Config.LedState,
 		LedPower:   state.Config.LedPower,
@@ -92,6 +100,7 @@ func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
 		LedPwmOn:   state.Config.LedPwmOn,
 		LedPwmOff:  state.Config.LedPwmOff,
 		Timezone:   timezone,
+		Firmware:   firmware,
 	}
 
 	slog.Info("[device][control-get] success")

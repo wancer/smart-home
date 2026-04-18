@@ -20,10 +20,10 @@ type Storage struct {
 	lock              *sync.Mutex
 	lastHistory       map[uint]string
 	bufferFlushStream chan struct{}
-	deviceMap         *DeviceStateStorage
+	deviceMap         *DeviceStateManager
 }
 
-func NewStorage(db *gorm.DB, cfg *config.Config, deviceStates *DeviceStateStorage) (*Storage, error) {
+func NewStorage(db *gorm.DB, cfg *config.Config, deviceStates *DeviceStateManager) (*Storage, error) {
 	s := &Storage{
 		db:                db,
 		buffer:            []*model.SensorEventModel{},

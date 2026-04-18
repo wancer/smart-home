@@ -22,7 +22,7 @@ const (
 
 func NewSensorsConfigurableController(
 	db *gorm.DB,
-	states *internal.DeviceStateStorage,
+	states *internal.DeviceStateManager,
 	buffer *internal.Storage,
 ) *SensorsConfigurableController {
 	return &SensorsConfigurableController{db: db, states: states, buffer: buffer}
@@ -30,7 +30,7 @@ func NewSensorsConfigurableController(
 
 type SensorsConfigurableController struct {
 	db     *gorm.DB
-	states *internal.DeviceStateStorage
+	states *internal.DeviceStateManager
 	buffer *internal.Storage
 }
 

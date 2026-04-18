@@ -33,9 +33,15 @@ type DeviceConfig struct {
 	LedPwmOn   *uint
 }
 
+type DeviceFirmware struct {
+	Version *string
+	BuiltAt *time.Time
+}
+
 type DeviceState struct {
-	Device *Device
-	Config *DeviceConfig
+	Device   *Device
+	Config   *DeviceConfig
+	Firmware *DeviceFirmware
 
 	Online     bool
 	On         *bool
@@ -46,11 +52,11 @@ type DeviceState struct {
 	Today      *float32 // W*h
 }
 
-type DeviceStateStorage struct {
+type DeviceStateManager struct {
 	devices map[uint]*DeviceState
 }
 
-func NewDeviceStateStorage(devices []*model.DeviceModel) *DeviceStateStorage {
+func NewDeviceStateManager(devices []*model.DeviceModel) *DeviceStateManager {
 	states := map[uint]*DeviceState{}
 	for _, device := range devices {
 		states[device.ID] = &DeviceState{
@@ -61,24 +67,25 @@ func NewDeviceStateStorage(devices []*model.DeviceModel) *DeviceStateStorage {
 				Name:  device.Name,
 				Topic: device.Topic,
 			},
-			Config: &DeviceConfig{},
+			Config:   &DeviceConfig{},
+			Firmware: &DeviceFirmware{},
 		}
 	}
 
-	return &DeviceStateStorage{
+	return &DeviceStateManager{
 		devices: states,
 	}
 }
 
-func (d *DeviceStateStorage) GetById(id uint) *DeviceState {
+func (d *DeviceStateManager) GetById(id uint) *DeviceState {
 	return d.devices[id]
 }
 
-func (d *DeviceStateStorage) GetAll() map[uint]*DeviceState {
+func (d *DeviceStateManager) GetAll() map[uint]*DeviceState {
 	return d.devices
 }
 
-func (d *DeviceStateStorage) GetByTopic(topic string) *DeviceState {
+func (d *DeviceStateManager) GetByTopic(topic string) *DeviceState {
 	if pos1 := strings.Index(topic, "/"); pos1 != -1 {
 		pos1++
 		pos2 := strings.Index(topic[pos1:], "/") + pos1
