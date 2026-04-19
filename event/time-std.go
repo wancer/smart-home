@@ -8,3 +8,14 @@ type TimeStd struct {
 	Offset     uint
 	Week       uint
 }
+
+func NewTimeStd(in map[string]any) TimeStd {
+	return TimeStd{
+		Day:        uint(in["Day"].(float64)),
+		Hemisphere: uint(in["Hemisphere"].(float64)),
+		Hour:       uint(in["Hour"].(float64)),
+		Month:      uint(in["Month"].(float64)),
+		Offset:     uint(in["Offset"].(float64)),
+		Week:       uint(in["Week"].(float64)),
+	}
+}

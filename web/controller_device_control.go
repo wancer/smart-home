@@ -84,23 +84,17 @@ func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
 
 	timezone := c.timezones.GetByParameters(offset, stdFormatted, dstFormatted)
 
-	firmware := FirmwareConfig{
-		Version: state.Firmware.Version,
-	}
-	if state.Firmware.BuiltAt != nil {
-		formatted := state.Firmware.BuiltAt.Format(time.DateTime)
-		firmware.BuildAt = &formatted
-	}
-
 	cfg := DeviceConfig{
-		LedState:   state.Config.LedState,
-		LedPower:   state.Config.LedPower,
 		TelePeriod: state.Config.TelePeriod,
-		LedPwmMode: state.Config.LedPwmMode,
-		LedPwmOn:   state.Config.LedPwmOn,
-		LedPwmOff:  state.Config.LedPwmOff,
-		Timezone:   timezone,
-		Firmware:   firmware,
+		LedConfig: LedConfig{
+			LedState:   state.Config.LedState,
+			LedPower:   state.Config.LedPower,
+			LedPwmOn:   state.Config.LedPwmOn,
+			LedPwmOff:  state.Config.LedPwmOff,
+			LedPwmMode: state.Config.LedPwmMode,
+		},
+		Timezone: timezone,
+		Firmware: NewFirmwareConfig(state.Firmware),
 	}
 
 	slog.Info("[device][control-get] success")

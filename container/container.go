@@ -47,7 +47,6 @@ func Build(cfg *config.Config) (*Container, error) {
 		return nil, err
 	}
 
-	ws := web.NewWebSocketServer()
 	dispatcher := event.NewDispatcher()
 	eventParser := mqtt.NewEventParser(dispatcher)
 
@@ -58,6 +57,9 @@ func Build(cfg *config.Config) (*Container, error) {
 
 	eventHandler := handler.NewEventHandler(states, publisher, storage)
 	eventHandler.Subscribe(dispatcher, states)
+
+	ws := web.NewWebSocketServer()
+	ws.Subscribe(dispatcher, states)
 
 	tokenAuth := jwtauth.New("HS256", []byte(cfg.Web.Jwt.Secret), nil)
 

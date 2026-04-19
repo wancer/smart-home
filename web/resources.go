@@ -9,7 +9,7 @@ import (
 
 type SensorEvent struct {
 	DeviceId uint    `json:"deviceId"`
-	RealTime int64   `json:"deviceTime"` // ToDo: fix me
+	Time     int64   `json:"time"` // ToDo: fix me
 	Power    uint    `json:"power"`
 	Current  float32 `json:"current"`
 	Voltage  uint    `json:"voltage"`
@@ -18,7 +18,7 @@ type SensorEvent struct {
 func NewSensorFromEvent(e *event.SensorEvent, d *internal.Device) *SensorEvent {
 	return &SensorEvent{
 		DeviceId: d.ID,
-		RealTime: time.Time(e.Time).Unix(),
+		Time:     time.Time(e.Time).Unix(),
 		Power:    e.Energy.Power,
 		Current:  e.Energy.Current,
 		Voltage:  e.Energy.Voltage,
@@ -28,7 +28,7 @@ func NewSensorFromEvent(e *event.SensorEvent, d *internal.Device) *SensorEvent {
 func NewSensorEvent(dbRecord *model.SensorEventModel) *SensorEvent {
 	return &SensorEvent{
 		DeviceId: dbRecord.DeviceId,
-		RealTime: dbRecord.RealTime.Unix(),
+		Time:     dbRecord.RealTime.Unix(),
 		Power:    dbRecord.Power,
 		Current:  dbRecord.Current,
 		Voltage:  dbRecord.Voltage,
@@ -63,7 +63,7 @@ type Device struct {
 }
 
 type WsStateEvent struct {
-	ID uint  `json:"id"`
+	ID uint  `json:"deviceId"`
 	On *bool `json:"on"`
 }
 
@@ -85,13 +85,28 @@ type FirmwareConfig struct {
 	BuildAt *string `json:"buildAt"`
 }
 
+func NewFirmwareConfig(c *internal.DeviceFirmware) FirmwareConfig {
+	firmware := FirmwareConfig{
+		Version: c.Version,
+	}
+	if c.BuiltAt != nil {
+		formatted := c.BuiltAt.Format(time.DateTime)
+		firmware.BuildAt = &formatted
+	}
+	return firmware
+}
+
+type LedConfig struct {
+	LedState   *uint `json:"ledState"`
+	LedPower   *bool `json:"ledPower"`
+	LedPwmMode *bool `json:"ledPwmMode"`
+	LedPwmOff  *uint `json:"ledPwmOff"`
+	LedPwmOn   *uint `json:"ledPwmOn"`
+}
+
 type DeviceConfig struct {
-	LedState   *uint          `json:"ledState"`
-	LedPower   *bool          `json:"ledPower"`
 	TelePeriod *uint          `json:"telePeriod"`
-	LedPwmMode *bool          `json:"ledPwmMode"`
-	LedPwmOff  *uint          `json:"ledPwmOff"`
-	LedPwmOn   *uint          `json:"ledPwmOn"`
 	Timezone   *string        `json:"timezone"`
+	LedConfig  LedConfig      `json:"led"`
 	Firmware   FirmwareConfig `json:"firmware"`
 }

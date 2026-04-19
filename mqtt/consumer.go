@@ -11,17 +11,17 @@ import (
 type Consumer struct {
 	topics    []string
 	deviceMap *internal.DeviceStateManager
-	handler   *EventParser
+	parser    *EventParser
 }
 
 func NewMqttConsumer(
 	deviceMap *internal.DeviceStateManager,
-	handler *EventParser,
+	parser *EventParser,
 ) *Consumer {
 	return &Consumer{
 		topics:    []string{},
 		deviceMap: deviceMap,
-		handler:   handler,
+		parser:    parser,
 	}
 }
 
@@ -29,11 +29,11 @@ func (c *Consumer) Subscribe(client driver.Client) {
 	slog.Info("Connected to MQTT Broker")
 
 	topicsToSubscribe := map[string]driver.MessageHandler{
-		"tele/%s/SENSOR":   c.handler.parseSensorEvent,
-		"stat/%s/POWER":    c.handler.parsePowerEvent,
-		"stat/%s/RESULT":   c.handler.parseResult,
-		"stat/%s/STATUS10": c.handler.parseState,
-		"stat/%s/STATUS2":  c.handler.parseFirmware,
+		"tele/%s/SENSOR":   c.parser.parseSensorEvent,
+		"stat/%s/POWER":    c.parser.parsePowerEvent,
+		"stat/%s/RESULT":   c.parser.parseResult,
+		"stat/%s/STATUS10": c.parser.parseState,
+		"stat/%s/STATUS2":  c.parser.parseFirmware,
 	}
 
 	// ToDo: move out of here, remove states dependency

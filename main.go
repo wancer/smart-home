@@ -70,7 +70,7 @@ func main() {
 				Name: "get-auth",
 				Action: func(_ context.Context, _ *cli.Command) error {
 					_, tokenString, _ := container.Auth.Encode(map[string]interface{}{"user_id": 123})
-					fmt.Sprintf("DEBUG: a sample jwt is %s\n\n", tokenString)
+					fmt.Printf("DEBUG: a sample jwt is %s\n\n", tokenString)
 					return nil
 				},
 			},

@@ -121,8 +121,8 @@ func (c *EventParser) parseResult(_ driver.Client, msg driver.Message) {
 		e, err = event.NewPower(rawMapped[key].(string))
 		parsed = &e
 	case "LedPower1":
-		var e event.LedPwmMode
-		e, err = event.NewLedPwmMode(rawMapped[key].(string))
+		var e event.LedPower
+		e, err = event.NewLedPower(rawMapped[key].(string))
 		parsed = &e
 	case "LedState":
 		var e event.LedState
@@ -153,13 +153,15 @@ func (c *EventParser) parseResult(_ driver.Client, msg driver.Message) {
 		e := event.NewTimezone(formatted)
 		parsed = &e
 	case "TimeStd":
-		var p *event.TimeStd
-		err = json.Unmarshal(msg.Payload(), &p)
-		parsed = p
+		v := rawMapped[key]
+		e := v.(map[string]any)
+		p := event.NewTimeStd(e)
+		parsed = &p
 	case "TimeDst":
-		var p *event.TimeDst
-		err = json.Unmarshal(msg.Payload(), &p)
-		parsed = p
+		v := rawMapped[key]
+		e := v.(map[string]any)
+		p := event.NewTimeDst(e)
+		parsed = &p
 	default:
 		slog.Warn("mqqt-event result", "event", string(msg.Payload()), "topic", msg.Topic())
 		return

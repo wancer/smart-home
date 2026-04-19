@@ -14,10 +14,10 @@ var PossibleOnOff = []string{EventOn, EventOff}
 
 type LedPower bool
 
-func NewLedPower(payload string) (LedPwmMode, error) {
+func NewLedPower(payload string) (LedPower, error) {
 	if !slices.Contains(PossibleOnOff, payload) {
-		return LedPwmMode(false), fmt.Errorf("unkown value %s", payload)
+		return LedPower(false), fmt.Errorf("unkown value %s", payload)
 	}
 
-	return LedPwmMode(payload == "ON"), nil
+	return LedPower(payload == "ON"), nil
 }
