@@ -15,6 +15,7 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 	m := toModel(e, state.Device, &now)
 	h.storage.Store(m)
 
+	state.LastUpdate = &now
 	if !state.Online {
 		slog.Info(fmt.Sprintf("Getting %s online", state.Device.Name))
 		state.Online = true
@@ -29,7 +30,6 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 		state.Power = &e.Energy.Power
 		state.Voltage = &e.Energy.Voltage
 		state.Today = &e.Energy.Today
-		state.LastUpdate = &now
 	case model.SensorTypeCo2:
 		state.CO2E = &e.Co2.CO2E
 		state.CO2 = &e.Co2.CO2
