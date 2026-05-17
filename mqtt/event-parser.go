@@ -69,7 +69,6 @@ func (c *EventParser) parseFirmware(_ driver.Client, msg driver.Message) {
 	}
 
 	slog.Debug("[event] firmware", "event", string(msg.Payload()))
-
 	c.dispatcher.DispatchMqqt(&parsed, msg.Topic())
 }
 

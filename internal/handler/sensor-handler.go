@@ -28,8 +28,8 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 	state.LastUpdate = &now
 }
 
-func toModel(e *event.SensorEvent, deviceId uint, now *time.Time) *model.SensorEventModel {
-	r := &model.SensorEventModel{}
+func toModel(e *event.SensorEvent, deviceId uint, now *time.Time) *model.SensorEvent {
+	r := &model.SensorEvent{}
 	r.DeviceId = deviceId
 	r.RealTime = *now
 	r.DeviceTime = time.Time(e.Time)

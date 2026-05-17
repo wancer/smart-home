@@ -10,25 +10,10 @@ import (
 
 type Publisher struct {
 	client driver.Client // interface
-	states *internal.DeviceStateManager
 }
 
-func NewPublisher(
-	c driver.Client,
-	states *internal.DeviceStateManager,
-) *Publisher {
-	return &Publisher{
-		client: c,
-		states: states,
-	}
-}
-
-// ToDo: move out of here, remove states dependency
-func (p *Publisher) PublishAllStates() {
-	return
-	for _, state := range p.states.GetAll() {
-		p.PublishStates(state.Device)
-	}
+func NewPublisher(client driver.Client) *Publisher {
+	return &Publisher{client: client}
 }
 
 func (p *Publisher) PublishStates(device *internal.Device) {
@@ -44,6 +29,12 @@ func (p *Publisher) PublishStates(device *internal.Device) {
 	p.GetLedPwmMode(device)
 	p.GetLedPwmOff(device)
 	p.GetLedPwmOn(device)
+
+	// p.GetParameters(device)
+	// p.GetTelemetry(device)
+	// p.GetMemory(device)
+	// p.GetTime(device)
+	// p.GetTimers(device)
 }
 
 func (p *Publisher) GetOnOff(device *internal.Device) {
@@ -67,6 +58,26 @@ func (p *Publisher) GetSensors(device *internal.Device) {
 
 func (p *Publisher) GetFirmware(device *internal.Device) {
 	p.publish(device.Topic, "STATUS2", "2")
+}
+
+func (p *Publisher) GetParameters(device *internal.Device) {
+	p.publish(device.Topic, "STATUS1", "1")
+}
+
+func (p *Publisher) GetTelemetry(device *internal.Device) {
+	p.publish(device.Topic, "STATUS3", "3")
+}
+
+func (p *Publisher) GetMemory(device *internal.Device) {
+	p.publish(device.Topic, "STATUS4", "4")
+}
+
+func (p *Publisher) GetTime(device *internal.Device) {
+	p.publish(device.Topic, "STATUS7", "")
+}
+
+func (p *Publisher) GetTimers(device *internal.Device) {
+	//p.publish(device.Topic, "TIMERS", "")
 }
 
 func (p *Publisher) SetVoltage(device *internal.Device, voltage int) {

@@ -95,6 +95,7 @@ func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
 		},
 		Timezone: timezone,
 		Firmware: NewFirmwareConfig(state.Firmware),
+		Hardware: state.Hardware,
 	}
 
 	slog.Info("[device][control-get] success")

@@ -16,7 +16,7 @@ import (
 
 type Storage struct {
 	db                *gorm.DB
-	buffer            []*model.SensorEventModel
+	buffer            []*model.SensorEvent
 	lock              *sync.Mutex
 	lastHistory       map[uint]string
 	bufferFlushStream chan struct{}
@@ -26,7 +26,7 @@ type Storage struct {
 func NewStorage(db *gorm.DB, cfg *config.Config, deviceStates *DeviceStateManager) (*Storage, error) {
 	s := &Storage{
 		db:                db,
-		buffer:            []*model.SensorEventModel{},
+		buffer:            []*model.SensorEvent{},
 		deviceMap:         deviceStates,
 		lastHistory:       map[uint]string{},
 		bufferFlushStream: make(chan struct{}),
@@ -44,7 +44,7 @@ func (s *Storage) init(c *config.Config) error {
 	ctx := context.Background()
 	// Load last recorded date per device from sensor_event
 	for _, device := range s.deviceMap.GetAll() {
-		lastEvents, err := gorm.G[model.SensorHistoryModel](s.db).
+		lastEvents, err := gorm.G[model.SensorHistory](s.db).
 			Where("device_id = ?", device.Device.ID).
 			Order("date DESC").
 			Limit(1).
@@ -86,7 +86,7 @@ func (s *Storage) Flush() {
 
 	s.lock.Lock()
 	buffer := s.buffer
-	s.buffer = []*model.SensorEventModel{}
+	s.buffer = []*model.SensorEvent{}
 	s.lock.Unlock()
 
 	for _, r := range buffer {
@@ -99,7 +99,7 @@ func (s *Storage) Flush() {
 	slog.Info(fmt.Sprintf("Stored %d events", len(buffer)))
 }
 
-func (s *Storage) GetBuffer() []*model.SensorEventModel {
+func (s *Storage) GetBuffer() []*model.SensorEvent {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	buffer := s.buffer
@@ -107,7 +107,7 @@ func (s *Storage) GetBuffer() []*model.SensorEventModel {
 	return buffer
 }
 
-func (s *Storage) Store(m *model.SensorEventModel) {
+func (s *Storage) Store(m *model.SensorEvent) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -122,7 +122,7 @@ func (s *Storage) StoreDaily(e *event.SensorEvent, deviceId uint) {
 		return
 	}
 
-	history := model.SensorHistoryModel{}
+	history := model.SensorHistory{}
 	history.Date = datatypes.Date(eventYesterday)
 	history.DeviceId = deviceId
 	history.Power = e.Energy.Yesterday

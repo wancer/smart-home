@@ -19,7 +19,7 @@ func (d *TasmotaTime) UnmarshalJSON(in []byte) error {
 	return nil
 }
 
-type SensorData struct {
+type Energy struct {
 	TotalStartTime TasmotaTime `json:"TotalStartTime"` // DateTime of calculation for Total
 	Total          float32     `json:"Total"`          // Total Energy usage including Today
 	Yesterday      float32     `json:"Yesterday"`      // Total Energy usage between 00:00 and 24:00 yesterday
@@ -33,7 +33,23 @@ type SensorData struct {
 	Current        float32     `json:"Current"`        // Current line current
 }
 
+type TempHumidity struct {
+	Temperature float32 `json:"Temperature"`
+	Humidity    float32 `json:"Humidity"`
+	DewPoint    float32 `json:"DewPoint"`
+}
+
+type Co2 struct {
+	CarbonDioxide uint    `json:"CarbonDioxide"`
+	CO2           uint    `json:"eCO2"`
+	Temperature   float32 `json:"Temperature"`
+	Humidity      float32 `json:"Humidity"`
+	DewPoint      float32 `json:"DewPoint"`
+}
+
 type SensorEvent struct {
-	Time   TasmotaTime `json:"Time"`
-	Energy SensorData  `json:"ENERGY"`
+	Time    TasmotaTime  `json:"Time"`
+	Energy  Energy       `json:"ENERGY"`
+	Co2     Co2          `json:"SCD40"`
+	TempHum TempHumidity `json:"SHT4X"`
 }

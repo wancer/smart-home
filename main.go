@@ -47,7 +47,6 @@ func main() {
 
 					// ToDo: fix race condition when subscribe not yet finised
 					time.Sleep(2 * time.Second)
-					container.MqttPublisher.PublishAllStates()
 					monitorStop := container.StateMonitor.Run()
 
 					defer close(monitorStop)

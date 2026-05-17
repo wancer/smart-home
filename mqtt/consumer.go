@@ -32,8 +32,16 @@ func (c *Consumer) Subscribe(client driver.Client) {
 		"tele/%s/SENSOR":   c.parser.parseSensorEvent,
 		"stat/%s/POWER":    c.parser.parsePowerEvent,
 		"stat/%s/RESULT":   c.parser.parseResult,
-		"stat/%s/STATUS10": c.parser.parseState,
 		"stat/%s/STATUS2":  c.parser.parseFirmware,
+		"stat/%s/STATUS10": c.parser.parseState,
+
+		"stat/%s/STATUS":  c.parser.parseAsWarning,
+		"stat/%s/STATUS0": c.parser.parseAsWarning,
+		"stat/%s/STATUS1": c.parser.parseAsWarning,
+		"stat/%s/STATUS3": c.parser.parseAsWarning,
+		"stat/%s/STATUS4": c.parser.parseAsWarning,
+		"stat/%s/STATUS7": c.parser.parseAsWarning,
+		"stat/%s/TIMERS":  c.parser.parseAsWarning,
 	}
 
 	// ToDo: move out of here, remove states dependency

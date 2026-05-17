@@ -52,7 +52,7 @@ func Build(cfg *config.Config) (*Container, error) {
 
 	consumer := mqtt.NewMqttConsumer(states, eventParser)
 	mqttClient := mqtt.NewMqtt(cfg, consumer)
-	publisher := mqtt.NewPublisher(mqttClient, states)
+	publisher := mqtt.NewPublisher(mqttClient)
 	stateMonitor := internal.NewStateMonitor(dispatcher, states)
 
 	eventHandler := handler.NewEventHandler(states, publisher, storage)

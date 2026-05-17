@@ -2,14 +2,14 @@ package model
 
 import "gorm.io/datatypes"
 
-type SensorHistoryModel struct {
+type SensorHistory struct {
 	ID       uint           `gorm:"primaryKey"`
-	Device   DeviceModel    `gorm:"not null"`
+	Device   Device         `gorm:"not null"`
 	DeviceId uint           `gorm:"not null"`
 	Date     datatypes.Date `gorm:"not null,type:date"`
 	Power    float32        `gorm:"not null"`
 }
 
-func (SensorHistoryModel) TableName() string {
+func (SensorHistory) TableName() string {
 	return "sensor_history"
 }

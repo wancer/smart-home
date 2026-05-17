@@ -19,26 +19,26 @@ func NewDatabaseInitializer(db *gorm.DB) *DatabaseInitializer {
 }
 
 func (init *DatabaseInitializer) migrate() error {
-	if err := init.db.AutoMigrate(&model.DeviceModel{}); err != nil {
+	if err := init.db.AutoMigrate(&model.Device{}); err != nil {
 		return err
 	}
-	if err := init.db.AutoMigrate(&model.SensorEventModel{}); err != nil {
+	if err := init.db.AutoMigrate(&model.SensorEvent{}); err != nil {
 		return err
 	}
-	if err := init.db.AutoMigrate(&model.SensorHistoryModel{}); err != nil {
+	if err := init.db.AutoMigrate(&model.SensorHistory{}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (init *DatabaseInitializer) syncDevices(cfgDevices []config.Device) ([]*model.DeviceModel, error) {
+func (init *DatabaseInitializer) syncDevices(cfgDevices []config.Device) ([]*model.Device, error) {
 	ctx := context.Background()
-	dbDevices, err := gorm.G[model.DeviceModel](init.db).Find(ctx)
+	dbDevices, err := gorm.G[model.Device](init.db).Find(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	match := func(cfgDevice config.Device, dbDevices []model.DeviceModel) *model.DeviceModel {
+	match := func(cfgDevice config.Device, dbDevices []model.Device) *model.Device {
 		for _, dbDevice := range dbDevices {
 			if cfgDevice.Topic == dbDevice.Topic {
 				return &dbDevice
@@ -47,11 +47,11 @@ func (init *DatabaseInitializer) syncDevices(cfgDevices []config.Device) ([]*mod
 		return nil
 	}
 
-	mappedDevices := []*model.DeviceModel{}
+	mappedDevices := []*model.Device{}
 	for _, cfgDevice := range cfgDevices {
 		dbDevice := match(cfgDevice, dbDevices)
 		if dbDevice == nil {
-			dbDevice = &model.DeviceModel{}
+			dbDevice = &model.Device{}
 			dbDevice.Topic = cfgDevice.Topic
 			dbDevice.Name = cfgDevice.Name
 			if err := init.db.Create(&dbDevice).Error; err != nil {

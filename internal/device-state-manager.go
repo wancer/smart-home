@@ -42,6 +42,7 @@ type DeviceState struct {
 	Device   *Device
 	Config   *DeviceConfig
 	Firmware *DeviceFirmware
+	Hardware *string
 
 	Online     bool
 	On         *bool
@@ -56,7 +57,7 @@ type DeviceStateManager struct {
 	devices map[uint]*DeviceState
 }
 
-func NewDeviceStateManager(devices []*model.DeviceModel) *DeviceStateManager {
+func NewDeviceStateManager(devices []*model.Device) *DeviceStateManager {
 	states := map[uint]*DeviceState{}
 	for _, device := range devices {
 		states[device.ID] = &DeviceState{

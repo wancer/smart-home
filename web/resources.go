@@ -25,7 +25,7 @@ func NewSensorFromEvent(e *event.SensorEvent, d *internal.Device) *SensorEvent {
 	}
 }
 
-func NewSensorEvent(dbRecord *model.SensorEventModel) *SensorEvent {
+func NewSensorEvent(dbRecord *model.SensorEvent) *SensorEvent {
 	return &SensorEvent{
 		DeviceId: dbRecord.DeviceId,
 		Time:     dbRecord.RealTime.Unix(),
@@ -109,4 +109,5 @@ type DeviceConfig struct {
 	Timezone   *string        `json:"timezone"`
 	LedConfig  LedConfig      `json:"led"`
 	Firmware   FirmwareConfig `json:"firmware"`
+	Hardware   *string        `json:"hardware"`
 }

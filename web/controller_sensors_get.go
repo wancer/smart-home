@@ -22,7 +22,7 @@ type SensorsController struct {
 
 func (c *SensorsController) Get(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
-	dbRecords, err := gorm.G[model.SensorEventModel](c.db).Where("device_time > ?", now.AddDate(0, 0, -1).Format(time.DateTime)).Order("id DESC").Find(r.Context())
+	dbRecords, err := gorm.G[model.SensorEvent](c.db).Where("device_time > ?", now.AddDate(0, 0, -1).Format(time.DateTime)).Order("id DESC").Find(r.Context())
 	if err != nil {
 		slog.Error("[sensors][get] error", "err", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

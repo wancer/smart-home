@@ -63,7 +63,7 @@ func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Reque
 	till := time.Now()
 	till = till.Truncate(time.Minute)
 	from := till.Add(-duration)
-	dbRecords, err := gorm.G[model.SensorEventModel](c.db).
+	dbRecords, err := gorm.G[model.SensorEvent](c.db).
 		Where("device_id = ?", state.Device.ID).
 		Where("real_time >= ?", from.Format(time.DateTime)).
 		Order("id ASC").
@@ -93,7 +93,7 @@ func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Reque
 	prevStep := from
 	for timeInStep := from; timeInStep.After(till) == false; timeInStep = timeInStep.Add(scale) {
 
-		dbRecordsMatch := []*model.SensorEventModel{}
+		dbRecordsMatch := []*model.SensorEvent{}
 		for _, dbRecord := range dbRecords {
 			dbRecordDate := dbRecord.RealTime
 			if dbRecordDate.Before(timeInStep) && dbRecordDate.After(prevStep) {

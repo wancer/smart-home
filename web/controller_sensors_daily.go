@@ -38,7 +38,7 @@ func (c *SensorsDailyController) Get(w http.ResponseWriter, r *http.Request) {
 
 	till := time.Now()
 	from := till.AddDate(0, -1, 0)
-	dbRecords, err := gorm.G[model.SensorHistoryModel](c.db).
+	dbRecords, err := gorm.G[model.SensorHistory](c.db).
 		Where("device_id = ?", state.Device.ID).
 		Where("date >= ?", from.Format(time.DateTime)).
 		Order("id DESC").
@@ -49,7 +49,7 @@ func (c *SensorsDailyController) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dbRecordsMap := map[string]*model.SensorHistoryModel{}
+	dbRecordsMap := map[string]*model.SensorHistory{}
 	for _, dbRecord := range dbRecords {
 		date := time.Time(dbRecord.Date).Format(time.DateOnly)
 		dbRecordsMap[date] = &dbRecord
