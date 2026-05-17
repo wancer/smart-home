@@ -19,8 +19,8 @@ func (h *EventHandler) HandleState(state *internal.DeviceState, e *event.Status1
 		state.Today = &e.StatusSNS.Energy.Today
 		state.LastUpdate = &now
 	case model.SensorTypeCo2:
+		state.CO2E = &e.StatusSNS.Co2.CO2E
 		state.CO2 = &e.StatusSNS.Co2.CO2
-		state.CarbonDioxide = &e.StatusSNS.Co2.CarbonDioxide
 		state.Temperature = &e.StatusSNS.Co2.Temperature
 		state.Humidity = &e.StatusSNS.Co2.Humidity
 		state.DewPoint = &e.StatusSNS.Co2.DewPoint

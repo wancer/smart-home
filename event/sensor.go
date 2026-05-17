@@ -40,11 +40,11 @@ type TempHumidity struct {
 }
 
 type Co2 struct {
-	CarbonDioxide uint    `json:"CarbonDioxide"`
-	CO2           uint    `json:"eCO2"`
-	Temperature   float32 `json:"Temperature"`
-	Humidity      float32 `json:"Humidity"`
-	DewPoint      float32 `json:"DewPoint"`
+	CO2         uint    `json:"CarbonDioxide"`
+	CO2E        uint    `json:"eCO2"`
+	Temperature float32 `json:"Temperature"`
+	Humidity    float32 `json:"Humidity"`
+	DewPoint    float32 `json:"DewPoint"`
 }
 
 type SensorEvent struct {

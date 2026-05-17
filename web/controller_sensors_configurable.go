@@ -60,23 +60,20 @@ func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	records := []DeviceSensorEvent{}
-	if state.Device.SensorType == model.SensorTypeEnergy {
-		c.buildRecords(records, scale, state, duration, w, r)
-	}
+	records := c.buildRecords(scale, state, duration, w, r)
 
 	slog.Info("[sensors][configurable] success")
 	json.NewEncoder(w).Encode(records)
 }
 
 func (c *SensorsConfigurableController) buildRecords(
-	records []DeviceSensorEvent,
 	scale time.Duration,
 	state *internal.DeviceState,
 	duration time.Duration,
 	w http.ResponseWriter,
 	r *http.Request,
-) {
+) []DeviceSensorEvent {
+	records := []DeviceSensorEvent{}
 
 	till := time.Now()
 	till = till.Truncate(time.Minute)
@@ -89,7 +86,7 @@ func (c *SensorsConfigurableController) buildRecords(
 	if err != nil {
 		slog.Error("[sensors][configurable] error", "err", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
+		return records
 	}
 
 	for _, buffered := range c.buffer.GetBuffer() {
@@ -119,39 +116,82 @@ func (c *SensorsConfigurableController) buildRecords(
 		}
 
 		record := DeviceSensorEvent{
-			Time:          format(&timeInStep),
+			Time: format(&timeInStep),
+
 			PowerConsumed: nil,
 			PowerAvg:      nil,
 			CurrentAvg:    nil,
 			VoltageAvg:    nil,
+
+			CO2eAvg:        nil,
+			TemperatureAvg: nil,
+			HumidityAvg:    nil,
 		}
 
 		dbRecordsMatchCount := uint(len(dbRecordsMatch))
 		if dbRecordsMatchCount > 0 {
-			var powerConsumed float32 = 0
-			var powerAvg uint = 0
-			var currentAvg float32 = 0
-			var voltageAvg uint = 0
-			for _, dbRecord := range dbRecordsMatch {
-				powerConsumed += float32(*dbRecord.Power) * sensorsFreq / secInMin / minInHour
-				powerAvg += *dbRecord.Power
-				currentAvg += *dbRecord.Current
-				voltageAvg += *dbRecord.Voltage
+			switch state.Device.SensorType {
+			case model.SensorTypeEnergy:
+				var powerConsumed float32 = 0
+				var powerAvg uint = 0
+				var currentAvg float32 = 0
+				var voltageAvg uint = 0
+				for _, dbRecord := range dbRecordsMatch {
+					powerConsumed += float32(*dbRecord.Power) * sensorsFreq / secInMin / minInHour
+					powerAvg += *dbRecord.Power
+					currentAvg += *dbRecord.Current
+					voltageAvg += *dbRecord.Voltage
+				}
+				record.PowerConsumed = &powerConsumed
+
+				powerAvg = powerAvg / dbRecordsMatchCount
+				record.PowerAvg = &powerAvg
+
+				currentAvg = currentAvg / float32(dbRecordsMatchCount)
+				record.CurrentAvg = &currentAvg
+
+				voltageAvg = voltageAvg / dbRecordsMatchCount
+				record.VoltageAvg = &voltageAvg
+			case model.SensorTypeCo2:
+				var temperatureAvg float32 = 0
+				var co2eAvg uint = 0
+				var humidityAvg float32 = 0
+				for _, dbRecord := range dbRecordsMatch {
+					temperatureAvg += *dbRecord.Temperature
+					co2eAvg += *dbRecord.CO2e
+					humidityAvg += *dbRecord.Humidity
+				}
+
+				temperatureAvg = temperatureAvg / float32(dbRecordsMatchCount)
+				record.TemperatureAvg = &temperatureAvg
+
+				co2eAvg = co2eAvg / dbRecordsMatchCount
+				record.CO2eAvg = &co2eAvg
+
+				humidityAvg = humidityAvg / float32(dbRecordsMatchCount)
+				record.HumidityAvg = &humidityAvg
+			case model.SensorTypeTempHumid:
+				var temperatureAvg float32 = 0
+				var humidityAvg float32 = 0
+				for _, dbRecord := range dbRecordsMatch {
+					temperatureAvg += *dbRecord.Temperature
+					humidityAvg += *dbRecord.Humidity
+				}
+
+				temperatureAvg = temperatureAvg / float32(dbRecordsMatchCount)
+				record.TemperatureAvg = &temperatureAvg
+
+				humidityAvg = humidityAvg / float32(dbRecordsMatchCount)
+				record.HumidityAvg = &humidityAvg
+			default:
+				slog.Error("UNKOWN_TYPE: " + state.Device.SensorType)
 			}
-			record.PowerConsumed = &powerConsumed
-
-			powerAvg = powerAvg / dbRecordsMatchCount
-			record.PowerAvg = &powerAvg
-
-			currentAvg = currentAvg / float32(dbRecordsMatchCount)
-			record.CurrentAvg = &currentAvg
-
-			voltageAvg = voltageAvg / dbRecordsMatchCount
-			record.VoltageAvg = &voltageAvg
 		}
 
 		records = append(records, record)
 
 		prevStep = timeInStep
 	}
+
+	return records
 }

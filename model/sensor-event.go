@@ -17,11 +17,11 @@ type SensorEvent struct {
 	Current       *float32
 	Voltage       *uint
 	// CO2 + TempHumidity
-	CarbonDioxide *uint
-	CO2           *uint
-	Temperature   *float32
-	Humidity      *float32
-	DewPoint      *float32
+	CO2         *uint
+	CO2e        *uint
+	Temperature *float32
+	Humidity    *float32
+	DewPoint    *float32
 }
 
 func (SensorEvent) TableName() string {

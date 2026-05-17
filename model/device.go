@@ -10,6 +10,7 @@ type Device struct {
 	ID             uint   `gorm:"primaryKey"`
 	Name           string `gorm:"size:255;not null"`
 	Topic          string `gorm:"uniqueIndex;size:255;not null"`
+	Enabled        bool   `gorm:"not null;default:true"`
 	SensorType     string `gorm:"default:energy"`
 	SupportsToggle bool   `gorm:"not null;default:true"`
 }

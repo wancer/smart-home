@@ -47,11 +47,11 @@ type DeviceState struct {
 	Voltage *uint
 	Today   *float32 // W*h
 
-	CarbonDioxide *uint
-	CO2           *uint
-	Temperature   *float32
-	Humidity      *float32
-	DewPoint      *float32
+	CO2         *uint
+	CO2E        *uint
+	Temperature *float32
+	Humidity    *float32
+	DewPoint    *float32
 }
 
 type DeviceStateManager struct {
