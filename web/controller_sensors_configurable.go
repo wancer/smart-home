@@ -60,6 +60,24 @@ func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	records := []DeviceSensorEvent{}
+	if state.Device.SensorType == model.SensorTypeEnergy {
+		c.buildRecords(records, scale, state, duration, w, r)
+	}
+
+	slog.Info("[sensors][configurable] success")
+	json.NewEncoder(w).Encode(records)
+}
+
+func (c *SensorsConfigurableController) buildRecords(
+	records []DeviceSensorEvent,
+	scale time.Duration,
+	state *internal.DeviceState,
+	duration time.Duration,
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
 	till := time.Now()
 	till = till.Truncate(time.Minute)
 	from := till.Add(-duration)
@@ -74,6 +92,12 @@ func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	for _, buffered := range c.buffer.GetBuffer() {
+		if buffered.DeviceId == state.Device.ID {
+			dbRecords = append(dbRecords, *buffered)
+		}
+	}
+
 	var format func(*time.Time) string
 	if scale > time.Hour {
 		format = func(t *time.Time) string { return t.Format(time.DateOnly) }
@@ -83,13 +107,6 @@ func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Reque
 		format = func(t *time.Time) string { return fmt.Sprintf("%02d:%02d", t.Hour(), t.Minute()) }
 	}
 
-	for _, buffered := range c.buffer.GetBuffer() {
-		if buffered.DeviceId == state.Device.ID {
-			dbRecords = append(dbRecords, *buffered)
-		}
-	}
-
-	records := []*DeviceSensorEvent{}
 	prevStep := from
 	for timeInStep := from; timeInStep.After(till) == false; timeInStep = timeInStep.Add(scale) {
 
@@ -101,7 +118,7 @@ func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Reque
 			}
 		}
 
-		record := &DeviceSensorEvent{
+		record := DeviceSensorEvent{
 			Time:          format(&timeInStep),
 			PowerConsumed: nil,
 			PowerAvg:      nil,
@@ -116,10 +133,10 @@ func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Reque
 			var currentAvg float32 = 0
 			var voltageAvg uint = 0
 			for _, dbRecord := range dbRecordsMatch {
-				powerConsumed += float32(dbRecord.Power) * sensorsFreq / secInMin / minInHour
-				powerAvg += dbRecord.Power
-				currentAvg += dbRecord.Current
-				voltageAvg += dbRecord.Voltage
+				powerConsumed += float32(*dbRecord.Power) * sensorsFreq / secInMin / minInHour
+				powerAvg += *dbRecord.Power
+				currentAvg += *dbRecord.Current
+				voltageAvg += *dbRecord.Voltage
 			}
 			record.PowerConsumed = &powerConsumed
 
@@ -137,7 +154,4 @@ func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Reque
 
 		prevStep = timeInStep
 	}
-
-	slog.Info("[sensors][configurable] success")
-	json.NewEncoder(w).Encode(records)
 }

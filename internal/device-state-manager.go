@@ -6,12 +6,6 @@ import (
 	"time"
 )
 
-type Device struct {
-	ID    uint
-	Name  string
-	Topic string
-}
-
 type TimeSwitch struct {
 	Day        uint
 	Hemisphere uint
@@ -39,7 +33,7 @@ type DeviceFirmware struct {
 }
 
 type DeviceState struct {
-	Device   *Device
+	Device   *model.Device
 	Config   *DeviceConfig
 	Firmware *DeviceFirmware
 	Hardware *string
@@ -47,10 +41,17 @@ type DeviceState struct {
 	Online     bool
 	On         *bool
 	LastUpdate *time.Time
-	Power      *uint
-	Current    *float32
-	Voltage    *uint
-	Today      *float32 // W*h
+
+	Power   *uint
+	Current *float32
+	Voltage *uint
+	Today   *float32 // W*h
+
+	CarbonDioxide *uint
+	CO2           *uint
+	Temperature   *float32
+	Humidity      *float32
+	DewPoint      *float32
 }
 
 type DeviceStateManager struct {
@@ -61,13 +62,9 @@ func NewDeviceStateManager(devices []*model.Device) *DeviceStateManager {
 	states := map[uint]*DeviceState{}
 	for _, device := range devices {
 		states[device.ID] = &DeviceState{
-			Online: false,
-			On:     nil,
-			Device: &Device{
-				ID:    device.ID,
-				Name:  device.Name,
-				Topic: device.Topic,
-			},
+			Online:   false,
+			On:       nil,
+			Device:   device,
 			Config:   &DeviceConfig{},
 			Firmware: &DeviceFirmware{},
 		}

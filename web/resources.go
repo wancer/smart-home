@@ -1,6 +1,7 @@
 package web
 
 import (
+	"log/slog"
 	"smart-home/event"
 	"smart-home/internal"
 	"smart-home/model"
@@ -8,21 +9,43 @@ import (
 )
 
 type SensorEvent struct {
-	DeviceId uint    `json:"deviceId"`
-	Time     int64   `json:"time"` // ToDo: fix me
-	Power    uint    `json:"power"`
-	Current  float32 `json:"current"`
-	Voltage  uint    `json:"voltage"`
+	DeviceId uint  `json:"deviceId"`
+	Time     int64 `json:"time"`
+
+	Power   *uint    `json:"power"`
+	Current *float32 `json:"current"`
+	Voltage *uint    `json:"voltage"`
+
+	CarbonDioxide *uint    `json:"CarbonDioxide"`
+	CO2           *uint    `json:"co2"`
+	Temperature   *float32 `json:"temperature"`
+	Humidity      *float32 `json:"humidity"`
 }
 
-func NewSensorFromEvent(e *event.SensorEvent, d *internal.Device) *SensorEvent {
-	return &SensorEvent{
+func NewSensorFromEvent(e *event.SensorEvent, d *model.Device) *SensorEvent {
+	normalized := &SensorEvent{
 		DeviceId: d.ID,
 		Time:     time.Time(e.Time).Unix(),
-		Power:    e.Energy.Power,
-		Current:  e.Energy.Current,
-		Voltage:  e.Energy.Voltage,
 	}
+
+	switch d.SensorType {
+	case model.SensorTypeEnergy:
+		normalized.Power = &e.Energy.Power
+		normalized.Current = &e.Energy.Current
+		normalized.Voltage = &e.Energy.Voltage
+	case model.SensorTypeCo2:
+		normalized.CO2 = &e.Co2.CO2
+		normalized.CarbonDioxide = &e.Co2.CarbonDioxide
+		normalized.Temperature = &e.Co2.Temperature
+		normalized.Humidity = &e.Co2.Humidity
+	case model.SensorTypeTempHumid:
+		normalized.Temperature = &e.TempHum.Temperature
+		normalized.Humidity = &e.TempHum.Humidity
+	default:
+		slog.Error("UNKOWN_TYPE: " + d.SensorType)
+	}
+
+	return normalized
 }
 
 func NewSensorEvent(dbRecord *model.SensorEvent) *SensorEvent {
@@ -35,28 +58,38 @@ func NewSensorEvent(dbRecord *model.SensorEvent) *SensorEvent {
 	}
 }
 
-func NewDeviceEvent(state *internal.DeviceState) *Device {
-	return &Device{
+func NewDeviceResponse(state *internal.DeviceState) *DeviceResponse {
+	return &DeviceResponse{
 		ID:   state.Device.ID,
 		Name: state.Device.Name,
 		State: &DeviceState{
-			On:      state.On,
-			Power:   state.Power,
-			Voltage: state.Voltage,
-			Current: state.Current,
+			On:            state.On,
+			Power:         state.Power,
+			Voltage:       state.Voltage,
+			Current:       state.Current,
+			CarbonDioxide: state.CarbonDioxide,
+			CO2:           state.CO2,
+			Temperature:   state.Temperature,
+			Humidity:      state.Humidity,
 		},
 	}
 }
 
 type DeviceState struct {
-	On         *bool    `json:"on"`
-	LastUpdate *int64   `json:"last"`
-	Power      *uint    `json:"power"`
-	Current    *float32 `json:"current"`
-	Voltage    *uint    `json:"voltage"`
+	On         *bool  `json:"on"`
+	LastUpdate *int64 `json:"last"`
+
+	Power   *uint    `json:"power"`
+	Current *float32 `json:"current"`
+	Voltage *uint    `json:"voltage"`
+
+	CarbonDioxide *uint    `json:"CarbonDioxide"`
+	CO2           *uint    `json:"co2"`
+	Temperature   *float32 `json:"temperature"`
+	Humidity      *float32 `json:"humidity"`
 }
 
-type Device struct {
+type DeviceResponse struct {
 	ID    uint         `json:"id"`
 	Name  string       `json:"name"`
 	State *DeviceState `json:"state"`

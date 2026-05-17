@@ -48,8 +48,8 @@ type Co2 struct {
 }
 
 type SensorEvent struct {
-	Time    TasmotaTime  `json:"Time"`
-	Energy  Energy       `json:"ENERGY"`
-	Co2     Co2          `json:"SCD40"`
-	TempHum TempHumidity `json:"SHT4X"`
+	Time    TasmotaTime   `json:"Time"`
+	Energy  *Energy       `json:"ENERGY"`
+	Co2     *Co2          `json:"SCD40"`
+	TempHum *TempHumidity `json:"SHT4X"`
 }

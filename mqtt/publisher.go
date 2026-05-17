@@ -3,7 +3,7 @@ package mqtt
 import (
 	"fmt"
 	"log/slog"
-	"smart-home/internal"
+	"smart-home/model"
 
 	driver "github.com/eclipse/paho.mqtt.golang"
 )
@@ -16,7 +16,7 @@ func NewPublisher(client driver.Client) *Publisher {
 	return &Publisher{client: client}
 }
 
-func (p *Publisher) PublishStates(device *internal.Device) {
+func (p *Publisher) PublishStates(device *model.Device) {
 	p.GetOnOff(device)
 	p.GetSensors(device)
 	p.GetFirmware(device)
@@ -37,11 +37,11 @@ func (p *Publisher) PublishStates(device *internal.Device) {
 	// p.GetTimers(device)
 }
 
-func (p *Publisher) GetOnOff(device *internal.Device) {
+func (p *Publisher) GetOnOff(device *model.Device) {
 	p.publish(device.Topic, "POWER", "")
 }
 
-func (p *Publisher) OnOff(device *internal.Device, state bool) {
+func (p *Publisher) OnOff(device *model.Device, state bool) {
 	var value string
 	if state {
 		value = "ON"
@@ -52,90 +52,90 @@ func (p *Publisher) OnOff(device *internal.Device, state bool) {
 	p.publish(device.Topic, "POWER", value)
 }
 
-func (p *Publisher) GetSensors(device *internal.Device) {
+func (p *Publisher) GetSensors(device *model.Device) {
 	p.publish(device.Topic, "STATUS10", "10")
 }
 
-func (p *Publisher) GetFirmware(device *internal.Device) {
+func (p *Publisher) GetFirmware(device *model.Device) {
 	p.publish(device.Topic, "STATUS2", "2")
 }
 
-func (p *Publisher) GetParameters(device *internal.Device) {
+func (p *Publisher) GetParameters(device *model.Device) {
 	p.publish(device.Topic, "STATUS1", "1")
 }
 
-func (p *Publisher) GetTelemetry(device *internal.Device) {
+func (p *Publisher) GetTelemetry(device *model.Device) {
 	p.publish(device.Topic, "STATUS3", "3")
 }
 
-func (p *Publisher) GetMemory(device *internal.Device) {
+func (p *Publisher) GetMemory(device *model.Device) {
 	p.publish(device.Topic, "STATUS4", "4")
 }
 
-func (p *Publisher) GetTime(device *internal.Device) {
+func (p *Publisher) GetTime(device *model.Device) {
 	p.publish(device.Topic, "STATUS7", "")
 }
 
-func (p *Publisher) GetTimers(device *internal.Device) {
+func (p *Publisher) GetTimers(device *model.Device) {
 	//p.publish(device.Topic, "TIMERS", "")
 }
 
-func (p *Publisher) SetVoltage(device *internal.Device, voltage int) {
+func (p *Publisher) SetVoltage(device *model.Device, voltage int) {
 	value := fmt.Sprintf("%d", voltage)
 	p.publish(device.Topic, "VoltageSet", value)
 }
 
-func (p *Publisher) SetPower(device *internal.Device, volts uint, power int) {
+func (p *Publisher) SetPower(device *model.Device, volts uint, power int) {
 	value := fmt.Sprintf("%d, %d", power, volts)
 	p.publish(device.Topic, "PowerSet", value)
 }
 
-func (p *Publisher) GetTimezone(device *internal.Device) {
+func (p *Publisher) GetTimezone(device *model.Device) {
 	p.publish(device.Topic, "Timezone", "")
 }
 
-func (p *Publisher) SetTimezone(device *internal.Device, offset string) {
+func (p *Publisher) SetTimezone(device *model.Device, offset string) {
 	p.publish(device.Topic, "Timezone", offset)
 }
 
-func (p *Publisher) GetTimeStd(device *internal.Device) {
+func (p *Publisher) GetTimeStd(device *model.Device) {
 	p.publish(device.Topic, "TimeStd", "")
 }
 
-func (p *Publisher) SetTimeStd(device *internal.Device, value string) {
+func (p *Publisher) SetTimeStd(device *model.Device, value string) {
 	p.publish(device.Topic, "TimeStd", value)
 }
 
-func (p *Publisher) GetTimeDst(device *internal.Device) {
+func (p *Publisher) GetTimeDst(device *model.Device) {
 	p.publish(device.Topic, "TimeDst", "")
 }
 
-func (p *Publisher) SetTimeDst(device *internal.Device, value string) {
+func (p *Publisher) SetTimeDst(device *model.Device, value string) {
 	p.publish(device.Topic, "TimeDst", value)
 }
 
-func (p *Publisher) GetLedPower(device *internal.Device) {
+func (p *Publisher) GetLedPower(device *model.Device) {
 	p.publish(device.Topic, "LedPower", "")
 }
 
-func (p *Publisher) GetLedState(device *internal.Device) {
+func (p *Publisher) GetLedState(device *model.Device) {
 	p.publish(device.Topic, "LedState", "")
 }
 
-func (p *Publisher) GetTelePeriod(device *internal.Device) {
+func (p *Publisher) GetTelePeriod(device *model.Device) {
 	p.publish(device.Topic, "TelePeriod", "")
 }
 
-func (p *Publisher) SetTelePeriod(device *internal.Device, value int) {
+func (p *Publisher) SetTelePeriod(device *model.Device, value int) {
 	formatted := fmt.Sprintf("%d", value)
 	p.publish(device.Topic, "TelePeriod", formatted)
 }
 
-func (p *Publisher) GetLedPwmMode(device *internal.Device) {
+func (p *Publisher) GetLedPwmMode(device *model.Device) {
 	p.publish(device.Topic, "LedPwmMode", "")
 }
 
-func (p *Publisher) SetLedPwmMode(device *internal.Device, state bool) {
+func (p *Publisher) SetLedPwmMode(device *model.Device, state bool) {
 	var value string
 	if state {
 		value = "ON"
@@ -145,20 +145,20 @@ func (p *Publisher) SetLedPwmMode(device *internal.Device, state bool) {
 	p.publish(device.Topic, "LedPwmMode", value)
 }
 
-func (p *Publisher) GetLedPwmOff(device *internal.Device) {
+func (p *Publisher) GetLedPwmOff(device *model.Device) {
 	p.publish(device.Topic, "LedPwmOff", "")
 }
 
-func (p *Publisher) SetLedPwmOff(device *internal.Device, value int) {
+func (p *Publisher) SetLedPwmOff(device *model.Device, value int) {
 	formatted := fmt.Sprintf("%d", value)
 	p.publish(device.Topic, "LedPwmOff", formatted)
 }
 
-func (p *Publisher) GetLedPwmOn(device *internal.Device) {
+func (p *Publisher) GetLedPwmOn(device *model.Device) {
 	p.publish(device.Topic, "LedPwmOn", "")
 }
 
-func (p *Publisher) SetLedPwmOn(device *internal.Device, value int) {
+func (p *Publisher) SetLedPwmOn(device *model.Device, value int) {
 	formatted := fmt.Sprintf("%d", value)
 	p.publish(device.Topic, "LedPwmOn", formatted)
 }

@@ -4,12 +4,13 @@ import (
 	"reflect"
 	"smart-home/event"
 	"smart-home/internal"
+	"smart-home/model"
 	"strings"
 )
 
 // ToDo: find a better way
 type EventPublisher interface {
-	PublishStates(*internal.Device)
+	PublishStates(*model.Device)
 }
 
 type EventHandler struct {
