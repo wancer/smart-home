@@ -8,14 +8,16 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"gorm.io/gorm"
 )
 
-func NewDevicesController(deviceStates *internal.DeviceStateManager) *DevicesController {
-	return &DevicesController{states: deviceStates}
+func NewDevicesController(deviceStates *internal.DeviceStateManager, db *gorm.DB) *DevicesController {
+	return &DevicesController{states: deviceStates, db: db}
 }
 
 type DevicesController struct {
 	states *internal.DeviceStateManager
+	db     *gorm.DB
 }
 
 func (c *DevicesController) GetAll(w http.ResponseWriter, r *http.Request) {

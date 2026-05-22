@@ -78,6 +78,8 @@ func NewDeviceResponse(state *internal.DeviceState) *DeviceResponse {
 	return &DeviceResponse{
 		ID:             state.Device.ID,
 		Name:           state.Device.Name,
+		Topic:          state.Device.Topic,
+		Enabled:        state.Device.Enabled,
 		SensorType:     state.Device.SensorType,
 		SupportsToggle: state.Device.SupportsToggle,
 		State: &DeviceState{
@@ -112,6 +114,8 @@ type DeviceState struct {
 type DeviceResponse struct {
 	ID             uint         `json:"id"`
 	Name           string       `json:"name"`
+	Topic          string       `json:"topic"`
+	Enabled        bool         `json:"enabled"`
 	SensorType     string       `json:"sensorType"`
 	SupportsToggle bool         `json:"supportsToggle"`
 	State          *DeviceState `json:"state"`

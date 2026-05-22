@@ -83,6 +83,20 @@ func (d *DeviceStateManager) GetAll() map[uint]*DeviceState {
 	return d.devices
 }
 
+func (d *DeviceStateManager) Add(device *model.Device) {
+	d.devices[device.ID] = &DeviceState{
+		Online:   false,
+		On:       nil,
+		Device:   device,
+		Config:   &DeviceConfig{},
+		Firmware: &DeviceFirmware{},
+	}
+}
+
+func (d *DeviceStateManager) Delete(id uint) {
+	delete(d.devices, id)
+}
+
 func (d *DeviceStateManager) GetByTopic(topic string) *DeviceState {
 	if pos1 := strings.Index(topic, "/"); pos1 != -1 {
 		pos1++

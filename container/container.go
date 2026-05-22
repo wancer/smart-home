@@ -35,7 +35,7 @@ func Build(cfg *config.Config) (*Container, error) {
 	if err := init.migrate(); err != nil {
 		return nil, err
 	}
-	devices, err := init.syncDevices(cfg.Devices)
+	devices, err := init.loadDevices()
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func Build(cfg *config.Config) (*Container, error) {
 	sensorsCtl := web.NewSensorsController(db, storage, states)
 	dailyCtl := web.NewSensorsDailyController(db, states)
 	configurableCtl := web.NewSensorsConfigurableController(db, states, storage)
-	devicesCtl := web.NewDevicesController(states)
+	devicesCtl := web.NewDevicesController(states, db)
 	deviceControlCtl := web.NewDeviceControlController(publisher, states, config.GetNewTimezones())
 
 	webServer := web.NewWebServer(

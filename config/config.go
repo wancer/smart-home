@@ -40,11 +40,6 @@ type MqttConfig struct {
 	CleanSession bool   `yaml:"cleanSession"`
 }
 
-type Device struct {
-	Name  string `yaml:"name"`
-	Topic string `yaml:"topic"`
-}
-
 type StorageConfig struct {
 	Driver      string        `yaml:"driver"`
 	DSN         string        `yaml:"dsn"`
@@ -54,7 +49,6 @@ type StorageConfig struct {
 type Config struct {
 	Web     *WebConfig     `yaml:"web"`
 	Mqtt    *MqttConfig    `yaml:"mqtt"`
-	Devices []Device       `yaml:"devices"`
 	Storage *StorageConfig `yaml:"storage"`
 	Logger  *LoggerConfig  `yaml:"logger"`
 }

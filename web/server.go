@@ -36,7 +36,7 @@ func NewWebServer(
 	if cfg.Cors.Allowed {
 		r.Use(cors.Handler(cors.Options{
 			AllowedOrigins:   []string{cfg.Cors.Host},
-			AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
+			AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Accept"},
 			AllowCredentials: false,
 		}))
@@ -59,7 +59,10 @@ func NewWebServer(
 		r.Get("/api/devices/{deviceId}/control", control.Get)
 		r.Post("/api/devices/{deviceId}/control", control.Do)
 		r.Get("/api/devices", devices.GetAll)
+		r.Post("/api/devices", devices.Create)
 		r.Get("/api/devices/{deviceId}", devices.Get)
+		r.Put("/api/devices/{deviceId}", devices.Update)
+		r.Delete("/api/devices/{deviceId}", devices.Delete)
 		r.Get("/api/auth/verify", auth.Verify)
 	})
 

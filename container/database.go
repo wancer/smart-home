@@ -2,9 +2,6 @@ package container
 
 import (
 	"context"
-	"fmt"
-	"log/slog"
-	"smart-home/config"
 	"smart-home/model"
 
 	"gorm.io/gorm"
@@ -31,38 +28,16 @@ func (init *DatabaseInitializer) migrate() error {
 	return nil
 }
 
-func (init *DatabaseInitializer) syncDevices(cfgDevices []config.Device) ([]*model.Device, error) {
+func (init *DatabaseInitializer) loadDevices() ([]*model.Device, error) {
 	ctx := context.Background()
 	dbDevices, err := gorm.G[model.Device](init.db).Find(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	match := func(cfgDevice config.Device, dbDevices []model.Device) *model.Device {
-		for _, dbDevice := range dbDevices {
-			if cfgDevice.Topic == dbDevice.Topic {
-				return &dbDevice
-			}
-		}
-		return nil
+	devices := make([]*model.Device, len(dbDevices))
+	for i := range dbDevices {
+		devices[i] = &dbDevices[i]
 	}
-
-	mappedDevices := []*model.Device{}
-	for _, cfgDevice := range cfgDevices {
-		dbDevice := match(cfgDevice, dbDevices)
-		if dbDevice == nil {
-			dbDevice = &model.Device{}
-			dbDevice.Topic = cfgDevice.Topic
-			dbDevice.Name = cfgDevice.Name
-			if err := init.db.Create(&dbDevice).Error; err != nil {
-				return nil, err
-			}
-
-			slog.Info(fmt.Sprintf("Stored %s device", dbDevice.Topic))
-		}
-
-		mappedDevices = append(mappedDevices, dbDevice)
-	}
-
-	return mappedDevices, nil
+	return devices, nil
 }
