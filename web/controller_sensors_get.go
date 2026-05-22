@@ -38,7 +38,7 @@ func (c *SensorsController) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	dbRecords, err := gorm.G[model.SensorEvent](c.db).Where("device_id = ?", state.Device.ID).Where("real_time > ?", now.Add(-5*time.Minute).Format(time.DateTime)).Order("id DESC").Find(r.Context())
+	dbRecords, err := gorm.G[model.SensorEvent](c.db).Where("device_id = ?", state.Device.ID).Where("datetime(real_time) > datetime(?)", now.Add(-5*time.Minute).UTC().Format(time.DateTime)).Order("id DESC").Find(r.Context())
 	if err != nil {
 		slog.Error("[sensors][get] error", "err", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

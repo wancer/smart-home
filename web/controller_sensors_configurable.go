@@ -2,7 +2,6 @@ package web
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"smart-home/internal"
@@ -80,7 +79,7 @@ func (c *SensorsConfigurableController) buildRecords(
 	from := till.Add(-duration)
 	dbRecords, err := gorm.G[model.SensorEvent](c.db).
 		Where("device_id = ?", state.Device.ID).
-		Where("real_time >= ?", from.Format(time.DateTime)).
+		Where("datetime(real_time) >= datetime(?)", from.UTC().Format(time.DateTime)).
 		Order("id ASC").
 		Find(r.Context())
 	if err != nil {
@@ -95,15 +94,6 @@ func (c *SensorsConfigurableController) buildRecords(
 		}
 	}
 
-	var format func(*time.Time) string
-	if scale > time.Hour {
-		format = func(t *time.Time) string { return t.Format(time.DateOnly) }
-	} else if scale == time.Hour {
-		format = func(t *time.Time) string { return fmt.Sprintf("%s %02d", t.Format(time.DateOnly), t.Hour()) }
-	} else {
-		format = func(t *time.Time) string { return fmt.Sprintf("%02d:%02d", t.Hour(), t.Minute()) }
-	}
-
 	prevStep := from
 	for timeInStep := from; timeInStep.After(till) == false; timeInStep = timeInStep.Add(scale) {
 
@@ -116,7 +106,7 @@ func (c *SensorsConfigurableController) buildRecords(
 		}
 
 		record := DeviceSensorEvent{
-			Time: format(&timeInStep),
+			Time: timeInStep.Unix(),
 
 			PowerConsumed: nil,
 			PowerAvg:      nil,

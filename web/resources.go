@@ -127,7 +127,7 @@ type WsStateEvent struct {
 }
 
 type DeviceSensorEvent struct {
-	Time string `json:"time"`
+	Time int64 `json:"time"`
 
 	PowerConsumed *float32 `json:"powerConsumed"`
 	PowerAvg      *uint    `json:"powerAvg"`

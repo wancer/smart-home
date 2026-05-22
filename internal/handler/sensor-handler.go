@@ -48,7 +48,7 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 func toModel(e *event.SensorEvent, device *model.Device, now *time.Time) *model.SensorEvent {
 	r := &model.SensorEvent{}
 	r.DeviceId = device.ID
-	r.RealTime = *now
+	r.RealTime = now.UTC()
 	r.DeviceTime = time.Time(e.Time)
 
 	switch device.SensorType {

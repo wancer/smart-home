@@ -40,7 +40,7 @@ func (c *SensorsDailyController) Get(w http.ResponseWriter, r *http.Request) {
 	from := till.AddDate(0, -1, 0)
 	dbRecords, err := gorm.G[model.SensorHistory](c.db).
 		Where("device_id = ?", state.Device.ID).
-		Where("date >= ?", from.Format(time.DateTime)).
+		Where("date(date) >= ?", from.UTC().Format(time.DateOnly)).
 		Order("id DESC").
 		Find(r.Context())
 	if err != nil {
