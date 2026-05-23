@@ -53,7 +53,7 @@ func NewWebServer(
 		r.Use(jwtauth.Authenticator(tokenAuth))
 
 		// Routing
-		r.Get("/api/sensors", sensors.Get)
+		r.Get("/api/sensors", sensors.GetMulti)
 		r.Get("/api/devices/{deviceId}/sensors/daily", daily.Get)
 		r.Get("/api/devices/{deviceId}/sensors/{duration}/{scale}", configurable.Get)
 		r.Get("/api/devices/{deviceId}/control", control.Get)

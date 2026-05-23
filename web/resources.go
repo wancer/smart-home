@@ -9,8 +9,9 @@ import (
 )
 
 type SensorEvent struct {
-	DeviceId uint  `json:"deviceId"`
-	Time     int64 `json:"time"`
+	DeviceId   uint   `json:"deviceId"`
+	Time       int64  `json:"time"`
+	DeviceTime string `json:"deviceTime"`
 
 	Power   *uint    `json:"power"`
 	Current *float32 `json:"current"`
@@ -24,8 +25,9 @@ type SensorEvent struct {
 
 func NewSensorFromEvent(e *event.SensorEvent, d *model.Device) *SensorEvent {
 	normalized := &SensorEvent{
-		DeviceId: d.ID,
-		Time:     time.Time(e.Time).Unix(),
+		DeviceId:   d.ID,
+		Time:       time.Now().Unix(),
+		DeviceTime: time.Time(e.Time).Format(time.DateTime),
 	}
 
 	switch d.SensorType {
@@ -134,6 +136,7 @@ type DeviceSensorEvent struct {
 	CurrentAvg    *float32 `json:"currentAvg"`
 	VoltageAvg    *uint    `json:"voltageAvg"`
 
+	CO2Avg         *uint    `json:"co2Avg"`
 	CO2eAvg        *uint    `json:"co2eAvg"`
 	TemperatureAvg *float32 `json:"temperatureAvg"`
 	HumidityAvg    *float32 `json:"humidityAvg"`

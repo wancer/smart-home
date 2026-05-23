@@ -9,7 +9,7 @@ update:
 
 .PHONY: build
 build:
-	CGO_ENABLED=1 go build -ldflags="-s -w" -o shome .
+	CGO_ENABLED=1 GOEXPERIMENT=jsonv2 go build -ldflags="-s -w" -o shome .
 	upx shome
 
 .PHONY: run

@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 )
 
@@ -23,40 +22,67 @@ type SensorsController struct {
 	states *internal.DeviceStateManager
 }
 
-func (c *SensorsController) Get(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
-	if err != nil {
-		slog.Error("[sensors][daily] error", "err", err)
+func (c *SensorsController) GetMulti(w http.ResponseWriter, r *http.Request) {
+	idParams := r.URL.Query()["ids"]
+	if len(idParams) == 0 {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	state := c.states.GetById(uint(deviceId))
-	if state == nil {
-		slog.Error("[sensors][daily] error", "err", err)
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		return
+
+	var deviceIds []uint
+	states := map[uint]*internal.DeviceState{}
+	for _, param := range idParams {
+		id, err := strconv.Atoi(param)
+		if err != nil || id <= 0 {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		uid := uint(id)
+		state := c.states.GetById(uid)
+		if state == nil {
+			continue
+		}
+		deviceIds = append(deviceIds, uid)
+		states[uid] = state
 	}
 
-	now := time.Now()
-	dbRecords, err := gorm.G[model.SensorEvent](c.db).Where("device_id = ?", state.Device.ID).Where("datetime(real_time) > datetime(?)", now.Add(-5*time.Minute).UTC().Format(time.DateTime)).Order("id DESC").Find(r.Context())
-	if err != nil {
-		slog.Error("[sensors][get] error", "err", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-	currentEvents := c.s.GetBuffer()
-
-	events := []*SensorEvent{}
-	for _, dbRecord := range dbRecords {
-		record := NewSensorEvent(&dbRecord, state.Device)
-		events = append(events, record)
+	result := map[uint][]*SensorEvent{}
+	for _, id := range deviceIds {
+		result[id] = []*SensorEvent{}
 	}
 
-	for _, currentEvent := range currentEvents {
-		record := NewSensorEvent(currentEvent, state.Device)
-		events = append(events, record)
+	if len(deviceIds) > 0 {
+		now := time.Now()
+		dbRecords, err := gorm.G[model.SensorEvent](c.db).
+			Where("device_id IN ?", deviceIds).
+			Where("datetime(real_time) > datetime(?)", now.Add(-5*time.Minute).UTC().Format(time.DateTime)).
+			Order("id ASC").
+			Find(r.Context())
+		if err != nil {
+			slog.Error("[sensors][multi] error", "err", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		for _, dbRecord := range dbRecords {
+			state, ok := states[dbRecord.DeviceId]
+			if !ok {
+				continue
+			}
+			record := NewSensorEvent(&dbRecord, state.Device)
+			result[dbRecord.DeviceId] = append(result[dbRecord.DeviceId], record)
+		}
+
+		for _, currentEvent := range c.s.GetBuffer() {
+			state, ok := states[currentEvent.DeviceId]
+			if !ok {
+				continue
+			}
+			record := NewSensorEvent(currentEvent, state.Device)
+			result[currentEvent.DeviceId] = append(result[currentEvent.DeviceId], record)
+		}
 	}
 
-	slog.Info("[sensors][get] success")
-	json.NewEncoder(w).Encode(events)
+	slog.Info("[sensors][multi] success", "count", len(deviceIds))
+	json.NewEncoder(w).Encode(result)
 }

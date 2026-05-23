@@ -113,6 +113,7 @@ func (c *SensorsConfigurableController) buildRecords(
 			CurrentAvg:    nil,
 			VoltageAvg:    nil,
 
+			CO2Avg:         nil,
 			CO2eAvg:        nil,
 			TemperatureAvg: nil,
 			HumidityAvg:    nil,
@@ -144,16 +145,21 @@ func (c *SensorsConfigurableController) buildRecords(
 				record.VoltageAvg = &voltageAvg
 			case model.SensorTypeCo2:
 				var temperatureAvg float32 = 0
+				var co2Avg uint = 0
 				var co2eAvg uint = 0
 				var humidityAvg float32 = 0
 				for _, dbRecord := range dbRecordsMatch {
 					temperatureAvg += *dbRecord.Temperature
+					co2Avg += *dbRecord.CO2
 					co2eAvg += *dbRecord.CO2e
 					humidityAvg += *dbRecord.Humidity
 				}
 
 				temperatureAvg = temperatureAvg / float32(dbRecordsMatchCount)
 				record.TemperatureAvg = &temperatureAvg
+
+				co2Avg = co2Avg / dbRecordsMatchCount
+				record.CO2Avg = &co2Avg
 
 				co2eAvg = co2eAvg / dbRecordsMatchCount
 				record.CO2eAvg = &co2eAvg
