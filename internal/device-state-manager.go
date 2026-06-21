@@ -15,6 +15,24 @@ type TimeSwitch struct {
 	Week       uint
 }
 
+type TimerConfig struct {
+	Enable int
+	Mode   int
+	Time   string
+	Window int
+	Days   string
+	Repeat int
+	Output int
+	Action int
+}
+
+type RuleConfig struct {
+	State int
+	Once  int
+	Rules string
+	Free  int
+}
+
 type DeviceConfig struct {
 	LedState   *uint
 	LedPower   *bool
@@ -25,6 +43,8 @@ type DeviceConfig struct {
 	LedPwmMode *bool
 	LedPwmOff  *uint
 	LedPwmOn   *uint
+	Timers     [16]*TimerConfig
+	Rules      [3]*RuleConfig
 }
 
 type DeviceFirmware struct {

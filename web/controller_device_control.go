@@ -39,23 +39,8 @@ type DeviceControlRequest struct {
 	Value     string `json:"value"`
 }
 
-func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
-	if err != nil {
-		slog.Error("[sensors][daily] error", "err", err)
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-	state := c.states.GetById(uint(deviceId))
-	if state == nil {
-		slog.Error("[sensors][daily] error", "err", err)
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		return
-	}
-
-	var stdFormatted string
-	var dstFormatted string
-	var offset string
+func (c *DeviceControlController) resolveTimezone(state *internal.DeviceState) *string {
+	var stdFormatted, dstFormatted, offset string
 	if state.Config.TimeStd != nil {
 		stdFormatted = fmt.Sprintf(
 			"%d,%d,%d,%d,%d,%d",
@@ -81,8 +66,26 @@ func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
 	if state.Config.Timezone != nil {
 		offset = *state.Config.Timezone
 	}
+	return c.timezones.GetByParameters(offset, stdFormatted, dstFormatted)
+}
 
-	timezone := c.timezones.GetByParameters(offset, stdFormatted, dstFormatted)
+func (c *DeviceControlController) parseDeviceId(r *http.Request) (uint, error) {
+	id, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
+	return uint(id), err
+}
+
+func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
+	deviceId, err := c.parseDeviceId(r)
+	if err != nil {
+		slog.Error("[sensors][daily] error", "err", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	state := c.states.GetById(deviceId)
+	if state == nil {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
 
 	cfg := DeviceConfig{
 		TelePeriod: state.Config.TelePeriod,
@@ -93,12 +96,97 @@ func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
 			LedPwmOff:  state.Config.LedPwmOff,
 			LedPwmMode: state.Config.LedPwmMode,
 		},
-		Timezone: timezone,
+		Timezone: c.resolveTimezone(state),
 		Firmware: NewFirmwareConfig(state.Firmware),
 		Hardware: state.Hardware,
 	}
 
 	slog.Info("[device][control-get] success")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(cfg)
+}
+
+func (c *DeviceControlController) GetLed(w http.ResponseWriter, r *http.Request) {
+	deviceId, err := c.parseDeviceId(r)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	state := c.states.GetById(deviceId)
+	if state == nil {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
+	c.pub.GetLedPower(state.Device)
+	c.pub.GetLedState(state.Device)
+	c.pub.GetLedPwmMode(state.Device)
+	c.pub.GetLedPwmOn(state.Device)
+	c.pub.GetLedPwmOff(state.Device)
+	time.Sleep(3 * time.Second)
+
+	cfg := LedConfig{
+		LedState:   state.Config.LedState,
+		LedPower:   state.Config.LedPower,
+		LedPwmOn:   state.Config.LedPwmOn,
+		LedPwmOff:  state.Config.LedPwmOff,
+		LedPwmMode: state.Config.LedPwmMode,
+	}
+
+	slog.Info("[device][led-get] success", "deviceId", deviceId)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(cfg)
+}
+
+func (c *DeviceControlController) GetTiming(w http.ResponseWriter, r *http.Request) {
+	deviceId, err := c.parseDeviceId(r)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	state := c.states.GetById(deviceId)
+	if state == nil {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
+	c.pub.GetTelePeriod(state.Device)
+	c.pub.GetTimezone(state.Device)
+	c.pub.GetTimeStd(state.Device)
+	c.pub.GetTimeDst(state.Device)
+	time.Sleep(3 * time.Second)
+
+	cfg := TimingConfig{
+		TelePeriod: state.Config.TelePeriod,
+		Timezone:   c.resolveTimezone(state),
+	}
+
+	slog.Info("[device][timing-get] success", "deviceId", deviceId)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(cfg)
+}
+
+func (c *DeviceControlController) GetHardware(w http.ResponseWriter, r *http.Request) {
+	deviceId, err := c.parseDeviceId(r)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	state := c.states.GetById(deviceId)
+	if state == nil {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
+	c.pub.GetFirmware(state.Device)
+	time.Sleep(3 * time.Second)
+
+	cfg := HardwareConfig{
+		Hardware: state.Hardware,
+		Firmware: NewFirmwareConfig(state.Firmware),
+	}
+
+	slog.Info("[device][hardware-get] success", "deviceId", deviceId)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(cfg)
 }

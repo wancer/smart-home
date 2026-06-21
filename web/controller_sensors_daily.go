@@ -36,11 +36,31 @@ func (c *SensorsDailyController) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	till := time.Now()
+	now := time.Now()
+	till := now
 	from := till.AddDate(0, -1, 0)
+
+	if fromStr := r.URL.Query().Get("from"); fromStr != "" {
+		parsed, parseErr := time.Parse(time.DateOnly, fromStr)
+		if parseErr != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		from = parsed
+	}
+	if tillStr := r.URL.Query().Get("till"); tillStr != "" {
+		parsed, parseErr := time.Parse(time.DateOnly, tillStr)
+		if parseErr != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		till = parsed
+	}
+
 	dbRecords, err := gorm.G[model.SensorHistory](c.db).
 		Where("device_id = ?", state.Device.ID).
 		Where("date(date) >= ?", from.UTC().Format(time.DateOnly)).
+		Where("date(date) <= ?", till.UTC().Format(time.DateOnly)).
 		Order("id DESC").
 		Find(r.Context())
 	if err != nil {
@@ -55,8 +75,9 @@ func (c *SensorsDailyController) Get(w http.ResponseWriter, r *http.Request) {
 		dbRecordsMap[date] = &dbRecord
 	}
 
+	todayStr := now.Format(time.DateOnly)
 	records := []*DeviceSensorDailyEvent{}
-	for day := from; day.After(till) == false; day = day.AddDate(0, 0, 1) {
+	for day := from; !day.After(till); day = day.AddDate(0, 0, 1) {
 		date := day.Format(time.DateOnly)
 		dbRecord, exists := dbRecordsMap[date]
 		var power *float32
@@ -65,12 +86,11 @@ func (c *SensorsDailyController) Get(w http.ResponseWriter, r *http.Request) {
 		} else {
 			power = nil
 		}
-
+		if date == todayStr {
+			power = state.Today
+		}
 		records = append(records, &DeviceSensorDailyEvent{Date: date, PowerConsumed: power})
 	}
-
-	// ToDo: make it better, now it's just replace of last element because of the order
-	records[len(records)-1].PowerConsumed = state.Today
 
 	slog.Info("[sensors][daily] success")
 	json.NewEncoder(w).Encode(records)

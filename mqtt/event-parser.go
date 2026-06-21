@@ -7,6 +7,8 @@ import (
 	"maps"
 	"slices"
 	"smart-home/event"
+	"strconv"
+	"strings"
 
 	driver "github.com/eclipse/paho.mqtt.golang"
 )
@@ -162,8 +164,36 @@ func (c *EventParser) parseResult(_ driver.Client, msg driver.Message) {
 		p := event.NewTimeDst(e)
 		parsed = &p
 	default:
-		slog.Warn("mqqt-event result", "event", string(msg.Payload()), "topic", msg.Topic())
-		return
+		if strings.HasPrefix(key, "Timer") {
+			n, numErr := strconv.Atoi(key[5:])
+			if numErr != nil || n < 1 || n > 16 {
+				slog.Warn("mqqt-event result", "event", string(msg.Payload()), "topic", msg.Topic())
+				return
+			}
+			timerData, ok := rawMapped[key].(map[string]any)
+			if !ok {
+				slog.Warn("mqqt-event result", "event", string(msg.Payload()), "topic", msg.Topic())
+				return
+			}
+			p := event.NewTimer(n, timerData)
+			parsed = &p
+		} else if strings.HasPrefix(key, "Rule") && len(key) == 5 {
+			n, numErr := strconv.Atoi(key[4:])
+			if numErr != nil || n < 1 || n > 3 {
+				slog.Warn("mqqt-event result", "event", string(msg.Payload()), "topic", msg.Topic())
+				return
+			}
+			ruleData, ok := rawMapped[key].(map[string]any)
+			if !ok {
+				slog.Warn("mqqt-event result", "event", string(msg.Payload()), "topic", msg.Topic())
+				return
+			}
+			p := event.NewRule(n, ruleData)
+			parsed = &p
+		} else {
+			slog.Warn("mqqt-event result", "event", string(msg.Payload()), "topic", msg.Topic())
+			return
+		}
 	}
 
 	if err != nil {
@@ -172,6 +202,38 @@ func (c *EventParser) parseResult(_ driver.Client, msg driver.Message) {
 	}
 
 	c.dispatcher.DispatchMqqt(parsed, msg.Topic())
+}
+
+func (c *EventParser) parseTimers(_ driver.Client, msg driver.Message) {
+	slog.Debug("[event] timers", "event", string(msg.Payload()))
+
+	var raw map[string]any
+	if err := json.Unmarshal(msg.Payload(), &raw); err != nil {
+		slog.Error("CANT_PARSE_TIMERS", "err", err, "payload", string(msg.Payload()))
+		return
+	}
+
+	// Format: {"Timers":{"Timer1":{...},...}} or flat {"Timer1":{...},...}
+	source := raw
+	if nested, ok := raw["Timers"].(map[string]any); ok {
+		source = nested
+	}
+
+	for k, v := range source {
+		if !strings.HasPrefix(k, "Timer") {
+			continue
+		}
+		n, err := strconv.Atoi(k[5:])
+		if err != nil || n < 1 || n > 16 {
+			continue
+		}
+		timerData, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+		p := event.NewTimer(n, timerData)
+		c.dispatcher.DispatchMqqt(&p, msg.Topic())
+	}
 }
 
 func (c *EventParser) parseAsWarning(_ driver.Client, msg driver.Message) {

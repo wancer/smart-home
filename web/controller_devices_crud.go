@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"gorm.io/gorm"
 )
 
 type DeviceUpsertRequest struct {
@@ -100,5 +101,34 @@ func (c *DevicesController) Delete(w http.ResponseWriter, r *http.Request) {
 
 	c.states.Delete(uint(deviceId))
 	slog.Info("[device][delete] success", "id", deviceId)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (c *DevicesController) WipeSensorData(w http.ResponseWriter, r *http.Request) {
+	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	if c.states.GetById(uint(deviceId)) == nil {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
+	if err := c.db.WithContext(r.Context()).Where("device_id = ?", uint(deviceId)).Delete(&model.SensorAggregate{}).Error; err != nil && err != gorm.ErrRecordNotFound {
+		slog.Error("[device][wipe-sensor-data] aggregate error", "err", err, "id", deviceId)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	if err := c.db.WithContext(r.Context()).Where("device_id = ?", uint(deviceId)).Delete(&model.SensorHistory{}).Error; err != nil && err != gorm.ErrRecordNotFound {
+		slog.Error("[device][wipe-sensor-data] history error", "err", err, "id", deviceId)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	c.storage.ClearBuffer(uint(deviceId))
+	slog.Info("[device][wipe-sensor-data] success", "id", deviceId)
 	w.WriteHeader(http.StatusNoContent)
 }

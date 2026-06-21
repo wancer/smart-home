@@ -67,8 +67,10 @@ func Build(cfg *config.Config) (*Container, error) {
 	sensorsCtl := web.NewSensorsController(db, storage, states)
 	dailyCtl := web.NewSensorsDailyController(db, states)
 	configurableCtl := web.NewSensorsConfigurableController(db, states, storage)
-	devicesCtl := web.NewDevicesController(states, db)
+	devicesCtl := web.NewDevicesController(states, db, storage)
 	deviceControlCtl := web.NewDeviceControlController(publisher, states, config.GetNewTimezones())
+	deviceTimersCtl := web.NewDeviceTimersController(publisher, states)
+	deviceRulesCtl := web.NewDeviceRulesController(publisher, states)
 
 	webServer := web.NewWebServer(
 		cfg.Web,
@@ -79,6 +81,8 @@ func Build(cfg *config.Config) (*Container, error) {
 		configurableCtl,
 		devicesCtl,
 		deviceControlCtl,
+		deviceTimersCtl,
+		deviceRulesCtl,
 		authCtl,
 	)
 

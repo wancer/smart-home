@@ -53,10 +53,11 @@ func (c *SensorsController) GetMulti(w http.ResponseWriter, r *http.Request) {
 
 	if len(deviceIds) > 0 {
 		now := time.Now()
-		dbRecords, err := gorm.G[model.SensorEvent](c.db).
+		// Query the two most recent 5-min buckets from the aggregate table
+		dbAggs, err := gorm.G[model.SensorAggregate](c.db).
 			Where("device_id IN ?", deviceIds).
-			Where("datetime(real_time) > datetime(?)", now.Add(-5*time.Minute).UTC().Format(time.DateTime)).
-			Order("id ASC").
+			Where("datetime(bucket_time) > datetime(?)", now.Add(-10*time.Minute).UTC().Format(time.DateTime)).
+			Order("bucket_time ASC").
 			Find(r.Context())
 		if err != nil {
 			slog.Error("[sensors][multi] error", "err", err)
@@ -64,15 +65,16 @@ func (c *SensorsController) GetMulti(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		for _, dbRecord := range dbRecords {
-			state, ok := states[dbRecord.DeviceId]
+		for _, agg := range dbAggs {
+			state, ok := states[agg.DeviceId]
 			if !ok {
 				continue
 			}
-			record := NewSensorEvent(&dbRecord, state.Device)
-			result[dbRecord.DeviceId] = append(result[dbRecord.DeviceId], record)
+			record := NewSensorEventFromAggregate(&agg, state.Device)
+			result[agg.DeviceId] = append(result[agg.DeviceId], record)
 		}
 
+		// Include buffered (unflushed) events as individual readings
 		for _, currentEvent := range c.s.GetBuffer() {
 			state, ok := states[currentEvent.DeviceId]
 			if !ok {

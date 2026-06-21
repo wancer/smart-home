@@ -13,12 +13,6 @@ import (
 	"gorm.io/gorm"
 )
 
-const (
-	sensorsFreq = 15 // sec
-	secInMin    = 60
-	minInHour   = 60
-)
-
 func NewSensorsConfigurableController(
 	db *gorm.DB,
 	states *internal.DeviceStateManager,
@@ -59,7 +53,19 @@ func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	records := c.buildRecords(scale, state, duration, w, r)
+	var till time.Time
+	if tillParam := r.URL.Query().Get("till"); tillParam != "" {
+		tillUnix, err := strconv.ParseInt(tillParam, 10, 64)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		till = time.Unix(tillUnix, 0).Truncate(time.Minute)
+	} else {
+		till = time.Now().Truncate(time.Minute)
+	}
+
+	records := c.buildRecords(scale, state, duration, till, w, r)
 
 	slog.Info("[sensors][configurable] success")
 	json.NewEncoder(w).Encode(records)
@@ -69,18 +75,18 @@ func (c *SensorsConfigurableController) buildRecords(
 	scale time.Duration,
 	state *internal.DeviceState,
 	duration time.Duration,
+	till time.Time,
 	w http.ResponseWriter,
 	r *http.Request,
 ) []DeviceSensorEvent {
 	records := []DeviceSensorEvent{}
 
-	till := time.Now()
-	till = till.Truncate(time.Minute)
 	from := till.Add(-duration)
-	dbRecords, err := gorm.G[model.SensorEvent](c.db).
+	dbRecords, err := gorm.G[model.SensorAggregate](c.db).
 		Where("device_id = ?", state.Device.ID).
-		Where("datetime(real_time) >= datetime(?)", from.UTC().Format(time.DateTime)).
-		Order("id ASC").
+		Where("datetime(bucket_time) >= datetime(?)", from.UTC().Format(time.DateTime)).
+		Where("datetime(bucket_time) < datetime(?)", till.UTC().Format(time.DateTime)).
+		Order("bucket_time ASC").
 		Find(r.Context())
 	if err != nil {
 		slog.Error("[sensors][configurable] error", "err", err)
@@ -88,104 +94,119 @@ func (c *SensorsConfigurableController) buildRecords(
 		return records
 	}
 
-	for _, buffered := range c.buffer.GetBuffer() {
-		if buffered.DeviceId == state.Device.ID {
-			dbRecords = append(dbRecords, *buffered)
-		}
-	}
+	// Merge unflushed buffer data
+	dbRecords = append(dbRecords, c.buffer.GetBufferAggregates(state.Device.ID)...)
 
 	prevStep := from
-	for timeInStep := from; timeInStep.After(till) == false; timeInStep = timeInStep.Add(scale) {
+	for timeInStep := from; !timeInStep.After(till); timeInStep = timeInStep.Add(scale) {
 
-		dbRecordsMatch := []*model.SensorEvent{}
-		for _, dbRecord := range dbRecords {
-			dbRecordDate := dbRecord.RealTime
-			if dbRecordDate.Before(timeInStep) && dbRecordDate.After(prevStep) {
-				dbRecordsMatch = append(dbRecordsMatch, &dbRecord)
+		var matching []model.SensorAggregate
+		for _, agg := range dbRecords {
+			bt := agg.BucketTime.UTC()
+			if (bt.Equal(prevStep) || bt.After(prevStep)) && bt.Before(timeInStep) {
+				matching = append(matching, agg)
 			}
 		}
 
 		record := DeviceSensorEvent{
-			Time: timeInStep.Unix(),
-
-			PowerConsumed: nil,
-			PowerAvg:      nil,
-			CurrentAvg:    nil,
-			VoltageAvg:    nil,
-
+			Time:           timeInStep.Unix(),
+			PowerConsumed:  nil,
+			PowerAvg:       nil,
+			CurrentAvg:     nil,
+			VoltageAvg:     nil,
 			CO2Avg:         nil,
 			CO2eAvg:        nil,
 			TemperatureAvg: nil,
 			HumidityAvg:    nil,
 		}
 
-		dbRecordsMatchCount := uint(len(dbRecordsMatch))
-		if dbRecordsMatchCount > 0 {
+		if len(matching) > 0 {
 			switch state.Device.SensorType {
 			case model.SensorTypeEnergy:
-				var powerConsumed float32 = 0
-				var powerAvg uint = 0
-				var currentAvg float32 = 0
-				var voltageAvg uint = 0
-				for _, dbRecord := range dbRecordsMatch {
-					powerConsumed += float32(*dbRecord.Power) * sensorsFreq / secInMin / minInHour
-					powerAvg += *dbRecord.Power
-					currentAvg += *dbRecord.Current
-					voltageAvg += *dbRecord.Voltage
+				var powerConsumed, powerSum, currentSum, voltageSum float32
+				var totalCount uint
+				for _, m := range matching {
+					totalCount += m.Count
+					if m.PowerConsumed != nil {
+						powerConsumed += *m.PowerConsumed
+					}
+					if m.PowerAvg != nil {
+						powerSum += *m.PowerAvg * float32(m.Count)
+					}
+					if m.CurrentAvg != nil {
+						currentSum += *m.CurrentAvg * float32(m.Count)
+					}
+					if m.VoltageAvg != nil {
+						voltageSum += *m.VoltageAvg * float32(m.Count)
+					}
 				}
 				record.PowerConsumed = &powerConsumed
+				if totalCount > 0 {
+					n := float32(totalCount)
+					pa := uint(powerSum / n)
+					ca := currentSum / n
+					va := uint(voltageSum / n)
+					record.PowerAvg = &pa
+					record.CurrentAvg = &ca
+					record.VoltageAvg = &va
+				}
 
-				powerAvg = powerAvg / dbRecordsMatchCount
-				record.PowerAvg = &powerAvg
-
-				currentAvg = currentAvg / float32(dbRecordsMatchCount)
-				record.CurrentAvg = &currentAvg
-
-				voltageAvg = voltageAvg / dbRecordsMatchCount
-				record.VoltageAvg = &voltageAvg
 			case model.SensorTypeCo2:
-				var temperatureAvg float32 = 0
-				var co2Avg uint = 0
-				var co2eAvg uint = 0
-				var humidityAvg float32 = 0
-				for _, dbRecord := range dbRecordsMatch {
-					temperatureAvg += *dbRecord.Temperature
-					co2Avg += *dbRecord.CO2
-					co2eAvg += *dbRecord.CO2e
-					humidityAvg += *dbRecord.Humidity
+				var tempSum, humSum, co2Sum, co2eSum float32
+				var totalCount uint
+				for _, m := range matching {
+					totalCount += m.Count
+					if m.TemperatureAvg != nil {
+						tempSum += *m.TemperatureAvg * float32(m.Count)
+					}
+					if m.CO2Avg != nil {
+						co2Sum += *m.CO2Avg * float32(m.Count)
+					}
+					if m.CO2eAvg != nil {
+						co2eSum += *m.CO2eAvg * float32(m.Count)
+					}
+					if m.HumidityAvg != nil {
+						humSum += *m.HumidityAvg * float32(m.Count)
+					}
+				}
+				if totalCount > 0 {
+					n := float32(totalCount)
+					temp := tempSum / n
+					hum := humSum / n
+					co2 := uint(co2Sum / n)
+					co2e := uint(co2eSum / n)
+					record.TemperatureAvg = &temp
+					record.HumidityAvg = &hum
+					record.CO2Avg = &co2
+					record.CO2eAvg = &co2e
 				}
 
-				temperatureAvg = temperatureAvg / float32(dbRecordsMatchCount)
-				record.TemperatureAvg = &temperatureAvg
-
-				co2Avg = co2Avg / dbRecordsMatchCount
-				record.CO2Avg = &co2Avg
-
-				co2eAvg = co2eAvg / dbRecordsMatchCount
-				record.CO2eAvg = &co2eAvg
-
-				humidityAvg = humidityAvg / float32(dbRecordsMatchCount)
-				record.HumidityAvg = &humidityAvg
 			case model.SensorTypeTempHumid:
-				var temperatureAvg float32 = 0
-				var humidityAvg float32 = 0
-				for _, dbRecord := range dbRecordsMatch {
-					temperatureAvg += *dbRecord.Temperature
-					humidityAvg += *dbRecord.Humidity
+				var tempSum, humSum float32
+				var totalCount uint
+				for _, m := range matching {
+					totalCount += m.Count
+					if m.TemperatureAvg != nil {
+						tempSum += *m.TemperatureAvg * float32(m.Count)
+					}
+					if m.HumidityAvg != nil {
+						humSum += *m.HumidityAvg * float32(m.Count)
+					}
+				}
+				if totalCount > 0 {
+					n := float32(totalCount)
+					temp := tempSum / n
+					hum := humSum / n
+					record.TemperatureAvg = &temp
+					record.HumidityAvg = &hum
 				}
 
-				temperatureAvg = temperatureAvg / float32(dbRecordsMatchCount)
-				record.TemperatureAvg = &temperatureAvg
-
-				humidityAvg = humidityAvg / float32(dbRecordsMatchCount)
-				record.HumidityAvg = &humidityAvg
 			default:
 				slog.Error("UNKOWN_TYPE: " + state.Device.SensorType)
 			}
 		}
 
 		records = append(records, record)
-
 		prevStep = timeInStep
 	}
 

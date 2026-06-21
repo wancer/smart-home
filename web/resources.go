@@ -76,6 +76,44 @@ func NewSensorEvent(dbRecord *model.SensorEvent, d *model.Device) *SensorEvent {
 	return normalized
 }
 
+func NewSensorEventFromAggregate(agg *model.SensorAggregate, d *model.Device) *SensorEvent {
+	normalized := &SensorEvent{
+		DeviceId: agg.DeviceId,
+		Time:     agg.BucketTime.Unix(),
+	}
+
+	switch d.SensorType {
+	case model.SensorTypeEnergy:
+		if agg.PowerAvg != nil {
+			p := uint(*agg.PowerAvg)
+			normalized.Power = &p
+		}
+		normalized.Current = agg.CurrentAvg
+		if agg.VoltageAvg != nil {
+			v := uint(*agg.VoltageAvg)
+			normalized.Voltage = &v
+		}
+	case model.SensorTypeCo2:
+		if agg.CO2Avg != nil {
+			v := uint(*agg.CO2Avg)
+			normalized.CO2Dioxide = &v
+		}
+		if agg.CO2eAvg != nil {
+			v := uint(*agg.CO2eAvg)
+			normalized.CO2E = &v
+		}
+		normalized.Temperature = agg.TemperatureAvg
+		normalized.Humidity = agg.HumidityAvg
+	case model.SensorTypeTempHumid:
+		normalized.Temperature = agg.TemperatureAvg
+		normalized.Humidity = agg.HumidityAvg
+	default:
+		slog.Error("UNKOWN_TYPE: " + d.SensorType)
+	}
+
+	return normalized
+}
+
 func NewDeviceResponse(state *internal.DeviceState) *DeviceResponse {
 	return &DeviceResponse{
 		ID:             state.Device.ID,
@@ -169,6 +207,23 @@ type LedConfig struct {
 	LedPwmMode *bool `json:"ledPwmMode"`
 	LedPwmOff  *uint `json:"ledPwmOff"`
 	LedPwmOn   *uint `json:"ledPwmOn"`
+}
+
+type RuleConfig struct {
+	State int    `json:"state"`
+	Once  int    `json:"once"`
+	Rules string `json:"rules"`
+	Free  int    `json:"free"`
+}
+
+type TimingConfig struct {
+	TelePeriod *uint   `json:"telePeriod"`
+	Timezone   *string `json:"timezone"`
+}
+
+type HardwareConfig struct {
+	Hardware *string        `json:"hardware"`
+	Firmware FirmwareConfig `json:"firmware"`
 }
 
 type DeviceConfig struct {

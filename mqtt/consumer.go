@@ -41,7 +41,7 @@ func (c *Consumer) Subscribe(client driver.Client) {
 		"stat/%s/STATUS3": c.parser.parseAsWarning,
 		"stat/%s/STATUS4": c.parser.parseAsWarning,
 		"stat/%s/STATUS7": c.parser.parseAsWarning,
-		"stat/%s/TIMERS":  c.parser.parseAsWarning,
+		"stat/%s/TIMERS":  c.parser.parseTimers,
 	}
 
 	// ToDo: move out of here, remove states dependency

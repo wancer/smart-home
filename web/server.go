@@ -28,6 +28,8 @@ func NewWebServer(
 	configurable *SensorsConfigurableController,
 	devices *DevicesController,
 	control *DeviceControlController,
+	timers *DeviceTimersController,
+	rules *DeviceRulesController,
 	auth *AuthController,
 ) *Server {
 	r := chi.NewMux()
@@ -58,11 +60,19 @@ func NewWebServer(
 		r.Get("/api/devices/{deviceId}/sensors/{duration}/{scale}", configurable.Get)
 		r.Get("/api/devices/{deviceId}/control", control.Get)
 		r.Post("/api/devices/{deviceId}/control", control.Do)
+		r.Get("/api/devices/{deviceId}/led", control.GetLed)
+		r.Get("/api/devices/{deviceId}/timing", control.GetTiming)
+		r.Get("/api/devices/{deviceId}/hardware", control.GetHardware)
+		r.Get("/api/devices/{deviceId}/timers", timers.Get)
+		r.Post("/api/devices/{deviceId}/timers/{n}", timers.Set)
+		r.Get("/api/devices/{deviceId}/rules", rules.Get)
+		r.Post("/api/devices/{deviceId}/rules/{n}", rules.Set)
 		r.Get("/api/devices", devices.GetAll)
 		r.Post("/api/devices", devices.Create)
 		r.Get("/api/devices/{deviceId}", devices.Get)
 		r.Put("/api/devices/{deviceId}", devices.Update)
 		r.Delete("/api/devices/{deviceId}", devices.Delete)
+		r.Delete("/api/devices/{deviceId}/sensors", devices.WipeSensorData)
 		r.Get("/api/auth/verify", auth.Verify)
 	})
 

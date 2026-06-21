@@ -19,22 +19,6 @@ func NewPublisher(client driver.Client) *Publisher {
 func (p *Publisher) PublishStates(device *model.Device) {
 	p.GetOnOff(device)
 	p.GetSensors(device)
-	p.GetFirmware(device)
-	p.GetTimezone(device)
-	p.GetTimeStd(device)
-	p.GetTimeDst(device)
-	p.GetLedPower(device)
-	p.GetLedState(device)
-	p.GetTelePeriod(device)
-	p.GetLedPwmMode(device)
-	p.GetLedPwmOff(device)
-	p.GetLedPwmOn(device)
-
-	// p.GetParameters(device)
-	// p.GetTelemetry(device)
-	// p.GetMemory(device)
-	// p.GetTime(device)
-	// p.GetTimers(device)
 }
 
 func (p *Publisher) GetOnOff(device *model.Device) {
@@ -77,7 +61,31 @@ func (p *Publisher) GetTime(device *model.Device) {
 }
 
 func (p *Publisher) GetTimers(device *model.Device) {
-	//p.publish(device.Topic, "TIMERS", "")
+	for i := 1; i <= 16; i++ {
+		p.GetTimer(device, i)
+	}
+}
+
+func (p *Publisher) GetRules(device *model.Device) {
+	for i := 1; i <= 3; i++ {
+		p.GetRule(device, i)
+	}
+}
+
+func (p *Publisher) GetRule(device *model.Device, n int) {
+	p.publish(device.Topic, fmt.Sprintf("Rule%d", n), "")
+}
+
+func (p *Publisher) SetRule(device *model.Device, n int, value string) {
+	p.publish(device.Topic, fmt.Sprintf("Rule%d", n), value)
+}
+
+func (p *Publisher) GetTimer(device *model.Device, n int) {
+	p.publish(device.Topic, fmt.Sprintf("Timer%d", n), "")
+}
+
+func (p *Publisher) SetTimer(device *model.Device, n int, value string) {
+	p.publish(device.Topic, fmt.Sprintf("Timer%d", n), value)
 }
 
 func (p *Publisher) SetVoltage(device *model.Device, voltage int) {
