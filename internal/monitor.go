@@ -3,6 +3,7 @@ package internal
 import (
 	"log/slog"
 	"smart-home/event"
+	"smart-home/model"
 	"time"
 )
 
@@ -28,6 +29,10 @@ func (m *StateMonitor) Run() chan struct{} {
 			case <-ticker.C:
 				now := time.Now()
 				for _, state := range m.states.GetAll() {
+					if state.Device.SensorType == model.SensorTypeIR { // availability comes from LWT
+						continue
+					}
+
 					if state.Online == false { // Already offline
 						continue
 					}

@@ -4,6 +4,7 @@ const (
 	SensorTypeEnergy    = "energy"
 	SensorTypeCo2       = "co2"
 	SensorTypeTempHumid = "t-h"
+	SensorTypeIR        = "ir" // infra-red remote: no sensors, no power control
 )
 
 type Device struct {

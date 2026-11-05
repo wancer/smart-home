@@ -3,70 +3,63 @@ package config
 import (
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"time"
 
-	"gopkg.in/yaml.v2"
+	envconfig "github.com/caarlos0/env/v11"
+	"github.com/joho/godotenv"
 )
 
 type CorsConfig struct {
-	Allowed bool   `yaml:"allowed"`
-	Host    string `yaml:"host"`
+	Allowed bool   `env:"ALLOWED"`
+	Host    string `env:"HOST"`
 }
 
 type JwtConfig struct {
-	Secret string `yaml:"secret"`
+	Secret string `env:"SECRET"`
 }
 
 type GoogleOauth struct {
-	RedirectURL   string   `yaml:"redirectUrl"`
-	ClientSecret  string   `yaml:"secret"`
-	AllowedEmails []string `yaml:"allowedEmails"`
+	ClientID      string   `env:"CLIENT_ID"`
+	AllowedEmails []string `env:"ALLOWED_EMAILS" envSeparator:","`
 }
 
 type WebConfig struct {
-	Host  string       `yaml:"host"`
-	Cors  *CorsConfig  `yaml:"cors"`
-	Oauth *GoogleOauth `yaml:"oauth"`
-	Jwt   *JwtConfig   `yaml:"jwt"`
+	Host  string       `env:"HOST"`
+	Cors  *CorsConfig  `env:",init" envPrefix:"CORS_"`
+	Oauth *GoogleOauth `env:",init" envPrefix:"OAUTH_"`
+	Jwt   *JwtConfig   `env:",init" envPrefix:"JWT_"`
 }
 
 type MqttConfig struct {
-	DSN          string `yaml:"dsn"`
-	User         string `yaml:"user"`
-	Pass         string `yaml:"pass"`
-	ClientId     string `yaml:"clientId"`
-	CleanSession bool   `yaml:"cleanSession"`
+	DSN          string `env:"DSN,required"`
+	User         string `env:"USER"`
+	Pass         string `env:"PASS"`
+	ClientId     string `env:"CLIENT_ID"`
+	CleanSession bool   `env:"CLEAN_SESSION"`
 }
 
 type StorageConfig struct {
-	Driver      string        `yaml:"driver"`
-	DSN         string        `yaml:"dsn"`
-	FlushPeriod time.Duration `yaml:"flushPeriod"`
+	Driver      string        `env:"DRIVER,required"`
+	DSN         string        `env:"DSN,required"`
+	FlushPeriod time.Duration `env:"FLUSH_PERIOD"`
 }
 
 type Config struct {
-	Web     *WebConfig     `yaml:"web"`
-	Mqtt    *MqttConfig    `yaml:"mqtt"`
-	Storage *StorageConfig `yaml:"storage"`
-	Logger  *LoggerConfig  `yaml:"logger"`
+	Web     *WebConfig     `env:",init" envPrefix:"WEB_"`
+	Mqtt    *MqttConfig    `env:",init" envPrefix:"MQTT_"`
+	Storage *StorageConfig `env:",init" envPrefix:"STORAGE_"`
+	Logger  *LoggerConfig  `env:",init" envPrefix:"LOG_"`
 }
 
 type LoggerConfig struct {
-	Level slog.Level `yaml:"level"`
+	Level slog.Level `env:"LEVEL" envDefault:"INFO"`
 }
 
 func Load() (*Config, error) {
-	filename, _ := filepath.Abs("./config.yaml")
-	yamlFile, err := os.ReadFile(filename)
-	if err != nil {
-		panic(err)
-	}
+	_ = godotenv.Load("../.env") // ignore error if no .env (prod)
 
 	var config Config
-	err = yaml.Unmarshal(yamlFile, &config)
-	if err != nil {
+	if err := envconfig.Parse(&config); err != nil {
 		panic(err)
 	}
 

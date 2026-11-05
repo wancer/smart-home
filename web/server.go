@@ -30,6 +30,8 @@ func NewWebServer(
 	control *DeviceControlController,
 	timers *DeviceTimersController,
 	rules *DeviceRulesController,
+	ir *IrController,
+	irRules *IrRulesController,
 	auth *AuthController,
 ) *Server {
 	r := chi.NewMux()
@@ -67,6 +69,16 @@ func NewWebServer(
 		r.Post("/api/devices/{deviceId}/timers/{n}", timers.Set)
 		r.Get("/api/devices/{deviceId}/rules", rules.Get)
 		r.Post("/api/devices/{deviceId}/rules/{n}", rules.Set)
+		r.Get("/api/devices/{deviceId}/ir", ir.Get)
+		r.Post("/api/devices/{deviceId}/ir", ir.Create)
+		r.Put("/api/devices/{deviceId}/ir/{signalId}", ir.Update)
+		r.Delete("/api/devices/{deviceId}/ir/{signalId}", ir.Delete)
+		r.Post("/api/devices/{deviceId}/ir/{signalId}/send", ir.Send)
+		r.Get("/api/devices/{deviceId}/ir/received", irRules.Received)
+		r.Get("/api/devices/{deviceId}/ir/rules", irRules.Get)
+		r.Post("/api/devices/{deviceId}/ir/rules", irRules.Create)
+		r.Put("/api/devices/{deviceId}/ir/rules/{ruleId}", irRules.Update)
+		r.Delete("/api/devices/{deviceId}/ir/rules/{ruleId}", irRules.Delete)
 		r.Get("/api/devices", devices.GetAll)
 		r.Post("/api/devices", devices.Create)
 		r.Get("/api/devices/{deviceId}", devices.Get)

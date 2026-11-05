@@ -17,6 +17,10 @@ func NewPublisher(client driver.Client) *Publisher {
 }
 
 func (p *Publisher) PublishStates(device *model.Device) {
+	if device.SensorType == model.SensorTypeIR {
+		return // nothing to poll: no power, no sensors
+	}
+
 	p.GetOnOff(device)
 	p.GetSensors(device)
 }
@@ -177,4 +181,10 @@ func (p *Publisher) publish(device string, command string, value string) {
 	token.Wait()
 
 	slog.Debug("Send to topic", "topic", topic, "value", value)
+}
+
+// SendIR transmits an infra-red code via Tasmota: cmnd/<topic>/IRsend {"Protocol":..,"Bits":..,"Data":"0x.."}
+func (p *Publisher) SendIR(device *model.Device, protocol string, bits int, code string) {
+	payload := fmt.Sprintf(`{"Protocol":%q,"Bits":%d,"Data":%q}`, protocol, bits, code)
+	p.publish(device.Topic, "IRsend", payload)
 }

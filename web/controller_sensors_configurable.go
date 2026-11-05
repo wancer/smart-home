@@ -201,6 +201,9 @@ func (c *SensorsConfigurableController) buildRecords(
 					record.HumidityAvg = &hum
 				}
 
+			case model.SensorTypeIR:
+				// no sensors
+
 			default:
 				slog.Error("UNKOWN_TYPE: " + state.Device.SensorType)
 			}

@@ -31,7 +31,7 @@ func (c *DevicesController) Create(w http.ResponseWriter, r *http.Request) {
 		Topic:          req.Topic,
 		Enabled:        req.Enabled,
 		SensorType:     req.SensorType,
-		SupportsToggle: req.SupportsToggle,
+		SupportsToggle: req.SupportsToggle && req.SensorType != model.SensorTypeIR,
 	}
 	if err := c.db.WithContext(r.Context()).Create(device).Error; err != nil {
 		slog.Error("[device][create] error", "err", err)
@@ -69,7 +69,7 @@ func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
 	device.Topic = req.Topic
 	device.Enabled = req.Enabled
 	device.SensorType = req.SensorType
-	device.SupportsToggle = req.SupportsToggle
+	device.SupportsToggle = req.SupportsToggle && req.SensorType != model.SensorTypeIR
 
 	if err := c.db.WithContext(r.Context()).Save(device).Error; err != nil {
 		slog.Error("[device][update] error", "err", err)
@@ -99,6 +99,9 @@ func (c *DevicesController) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	c.db.WithContext(r.Context()).Where("device_id = ?", uint(deviceId)).Delete(&model.IrSignal{})
+	c.db.WithContext(r.Context()).Where("rule_id IN (?)", c.db.Model(&model.IrRule{}).Select("id").Where("device_id = ?", uint(deviceId))).Delete(&model.IrRuleAction{})
+	c.db.WithContext(r.Context()).Where("device_id = ?", uint(deviceId)).Delete(&model.IrRule{})
 	c.states.Delete(uint(deviceId))
 	slog.Info("[device][delete] success", "id", deviceId)
 	w.WriteHeader(http.StatusNoContent)

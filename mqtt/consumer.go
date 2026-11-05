@@ -30,6 +30,8 @@ func (c *Consumer) Subscribe(client driver.Client) {
 
 	topicsToSubscribe := map[string]driver.MessageHandler{
 		"tele/%s/SENSOR":   c.parser.parseSensorEvent,
+		"tele/%s/LWT":      c.parser.parseLwt,
+		"tele/%s/RESULT":   c.parser.parseTeleResult,
 		"stat/%s/POWER":    c.parser.parsePowerEvent,
 		"stat/%s/RESULT":   c.parser.parseResult,
 		"stat/%s/STATUS2":  c.parser.parseFirmware,

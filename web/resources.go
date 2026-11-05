@@ -43,6 +43,8 @@ func NewSensorFromEvent(e *event.SensorEvent, d *model.Device) *SensorEvent {
 	case model.SensorTypeTempHumid:
 		normalized.Temperature = &e.TempHum.Temperature
 		normalized.Humidity = &e.TempHum.Humidity
+	case model.SensorTypeIR:
+		// no sensors
 	default:
 		slog.Error("UNKOWN_TYPE: " + d.SensorType)
 	}
@@ -69,6 +71,8 @@ func NewSensorEvent(dbRecord *model.SensorEvent, d *model.Device) *SensorEvent {
 	case model.SensorTypeTempHumid:
 		normalized.Temperature = dbRecord.Temperature
 		normalized.Humidity = dbRecord.Humidity
+	case model.SensorTypeIR:
+		// no sensors
 	default:
 		slog.Error("UNKOWN_TYPE: " + d.SensorType)
 	}
@@ -107,6 +111,8 @@ func NewSensorEventFromAggregate(agg *model.SensorAggregate, d *model.Device) *S
 	case model.SensorTypeTempHumid:
 		normalized.Temperature = agg.TemperatureAvg
 		normalized.Humidity = agg.HumidityAvg
+	case model.SensorTypeIR:
+		// no sensors
 	default:
 		slog.Error("UNKOWN_TYPE: " + d.SensorType)
 	}

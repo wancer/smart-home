@@ -29,6 +29,12 @@ func (init *DatabaseInitializer) migrate() error {
 	if err := init.db.AutoMigrate(&model.SensorAggregate{}); err != nil {
 		return err
 	}
+	if err := init.db.AutoMigrate(&model.IrSignal{}); err != nil {
+		return err
+	}
+	if err := init.db.AutoMigrate(&model.IrRule{}, &model.IrRuleAction{}); err != nil {
+		return err
+	}
 	if err := init.backfillAggregates(); err != nil {
 		return err
 	}

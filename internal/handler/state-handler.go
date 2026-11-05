@@ -28,6 +28,8 @@ func (h *EventHandler) HandleState(state *internal.DeviceState, e *event.Status1
 		state.Temperature = &e.StatusSNS.TempHum.Temperature
 		state.Humidity = &e.StatusSNS.TempHum.Humidity
 		state.DewPoint = &e.StatusSNS.TempHum.DewPoint
+	case model.SensorTypeIR:
+		// no sensors
 	default:
 		slog.Error("UNKOWN_TYPE: " + state.Device.SensorType)
 	}

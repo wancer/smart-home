@@ -1,6 +1,7 @@
 package container
 
 import (
+	"smart-home/automation"
 	"smart-home/config"
 	"smart-home/event"
 	"smart-home/internal"
@@ -55,7 +56,8 @@ func Build(cfg *config.Config) (*Container, error) {
 	publisher := mqtt.NewPublisher(mqttClient)
 	stateMonitor := internal.NewStateMonitor(dispatcher, states)
 
-	eventHandler := handler.NewEventHandler(states, publisher, storage)
+	irRunner := automation.NewIrRuleRunner(db, states, publisher)
+	eventHandler := handler.NewEventHandler(states, publisher, storage, irRunner)
 	eventHandler.Subscribe(dispatcher, states)
 
 	ws := web.NewWebSocketServer()
@@ -71,6 +73,8 @@ func Build(cfg *config.Config) (*Container, error) {
 	deviceControlCtl := web.NewDeviceControlController(publisher, states, config.GetNewTimezones())
 	deviceTimersCtl := web.NewDeviceTimersController(publisher, states)
 	deviceRulesCtl := web.NewDeviceRulesController(publisher, states)
+	irCtl := web.NewIrController(db, states, publisher)
+	irRulesCtl := web.NewIrRulesController(db, states, irRunner)
 
 	webServer := web.NewWebServer(
 		cfg.Web,
@@ -83,6 +87,8 @@ func Build(cfg *config.Config) (*Container, error) {
 		deviceControlCtl,
 		deviceTimersCtl,
 		deviceRulesCtl,
+		irCtl,
+		irRulesCtl,
 		authCtl,
 	)
 

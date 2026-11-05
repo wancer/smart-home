@@ -63,6 +63,12 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if tokenInfo.Audience != c.cfg.ClientID {
+		slog.Warn("[auth][login] invalid audience", "audience", tokenInfo.Audience)
+		http.Error(w, http.StatusText(401), 401)
+		return
+	}
+
 	if !slices.Contains(c.cfg.AllowedEmails, tokenInfo.Email) {
 		slog.Error("[auth][login] not allowed", "err", err)
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)

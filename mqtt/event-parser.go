@@ -39,6 +39,17 @@ func (c *EventParser) parseSensorEvent(_ driver.Client, msg driver.Message) {
 	c.dispatcher.DispatchMqqt(&parsed, msg.Topic())
 }
 
+func (c *EventParser) parseLwt(_ driver.Client, msg driver.Message) {
+	parsed, err := event.NewLwt(string(msg.Payload()))
+	if err != nil {
+		slog.Error("LWT_ERR", "error", err, "topic", msg.Topic())
+		return
+	}
+
+	slog.Debug("[event] lwt", "event", string(msg.Payload()))
+	c.dispatcher.DispatchMqqt(&parsed, msg.Topic())
+}
+
 func (c *EventParser) parseState(_ driver.Client, msg driver.Message) {
 	var parsed event.Status10
 	err := json.Unmarshal(msg.Payload(), &parsed)
@@ -238,4 +249,22 @@ func (c *EventParser) parseTimers(_ driver.Client, msg driver.Message) {
 
 func (c *EventParser) parseAsWarning(_ driver.Client, msg driver.Message) {
 	slog.Warn("mqqt-event warning", "event", string(msg.Payload()), "topic", msg.Topic())
+}
+
+// parseTeleResult handles unsolicited tele/<topic>/RESULT messages (currently only IrReceived).
+func (c *EventParser) parseTeleResult(_ driver.Client, msg driver.Message) {
+	var raw struct {
+		IrReceived *event.IrReceived `json:"IrReceived"`
+	}
+	if err := json.Unmarshal(msg.Payload(), &raw); err != nil {
+		slog.Error("CANT_PARSE_TELE_RESULT", "err", err, "topic", msg.Topic(), "payload", string(msg.Payload()))
+		return
+	}
+	if raw.IrReceived == nil {
+		slog.Debug("[event] tele result ignored", "topic", msg.Topic(), "payload", string(msg.Payload()))
+		return
+	}
+
+	slog.Debug("[event] ir received", "event", string(msg.Payload()))
+	c.dispatcher.DispatchMqqt(raw.IrReceived, msg.Topic())
 }

@@ -10,6 +10,10 @@ import (
 )
 
 func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.SensorEvent) {
+	if state.Device.SensorType == model.SensorTypeIR {
+		return // IR devices have no sensors
+	}
+
 	now := time.Now()
 
 	m := toModel(e, state.Device, &now)

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"smart-home/config"
 	"smart-home/internal"
+	"smart-home/model"
 	"smart-home/mqtt"
 	"strconv"
 	"time"
@@ -210,6 +211,12 @@ func (c *DeviceControlController) Do(w http.ResponseWriter, r *http.Request) {
 	device := c.states.GetById(parsed.DeviceId)
 	if device == nil {
 		slog.Error("[device][control] error", "err", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	if device.Device.SensorType == model.SensorTypeIR {
+		slog.Error("[device][control] unsupported for IR device", "deviceId", parsed.DeviceId)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
