@@ -71,6 +71,10 @@ func (s *WebSocketServer) Subscribe(dispatcher *event.Dispatcher, states *intern
 			}
 
 			deviceState := states.GetByTopic(e.Topic)
+			if deviceState == nil { // in-flight message of a deleted or renamed device
+				return
+			}
+
 			on := bool(*p)
 			wsEvent := WsStateEvent{
 				ID: deviceState.Device.ID,
@@ -86,6 +90,10 @@ func (s *WebSocketServer) Subscribe(dispatcher *event.Dispatcher, states *intern
 			e := raw.(event.MqttEvent)
 			p := e.Payload.(*event.Status10)
 			deviceState := states.GetByTopic(e.Topic)
+			if deviceState == nil { // in-flight message of a deleted or renamed device
+				return
+			}
+
 			wsEvent := NewSensorFromEvent(p.StatusSNS, deviceState.Device)
 			s.Send("sensor", wsEvent)
 		},
@@ -97,6 +105,10 @@ func (s *WebSocketServer) Subscribe(dispatcher *event.Dispatcher, states *intern
 			e := raw.(event.MqttEvent)
 			p := e.Payload.(*event.SensorEvent)
 			deviceState := states.GetByTopic(e.Topic)
+			if deviceState == nil { // in-flight message of a deleted or renamed device
+				return
+			}
+
 			wsEvent := NewSensorFromEvent(p, deviceState.Device)
 			s.Send("sensor", wsEvent)
 		},

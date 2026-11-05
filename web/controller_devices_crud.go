@@ -27,19 +27,28 @@ func (c *DevicesController) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	device := &model.Device{
-		Name:           req.Name,
-		Topic:          req.Topic,
-		Enabled:        req.Enabled,
-		SensorType:     req.SensorType,
-		SupportsToggle: req.SupportsToggle && req.SensorType != model.SensorTypeIR,
+		Name:       req.Name,
+		Topic:      req.Topic,
+		SensorType: req.SensorType,
 	}
-	if err := c.db.WithContext(r.Context()).Create(device).Error; err != nil {
+	err := c.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(device).Error; err != nil {
+			return err
+		}
+
+		// insert replaces false with the column default (true), update doesn't
+		device.Enabled = req.Enabled
+		device.SupportsToggle = req.SupportsToggle && req.SensorType != model.SensorTypeIR
+		return tx.Save(device).Error
+	})
+	if err != nil {
 		slog.Error("[device][create] error", "err", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
 	c.states.Add(device)
+	c.syncSubscription(device)
 	slog.Info("[device][create] success", "id", device.ID)
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(NewDeviceResponse(c.states.GetById(device.ID)))
@@ -77,6 +86,7 @@ func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	c.syncSubscription(device)
 	slog.Info("[device][update] success", "id", deviceId)
 	json.NewEncoder(w).Encode(NewDeviceResponse(state))
 }
@@ -102,9 +112,18 @@ func (c *DevicesController) Delete(w http.ResponseWriter, r *http.Request) {
 	c.db.WithContext(r.Context()).Where("device_id = ?", uint(deviceId)).Delete(&model.IrSignal{})
 	c.db.WithContext(r.Context()).Where("rule_id IN (?)", c.db.Model(&model.IrRule{}).Select("id").Where("device_id = ?", uint(deviceId))).Delete(&model.IrRuleAction{})
 	c.db.WithContext(r.Context()).Where("device_id = ?", uint(deviceId)).Delete(&model.IrRule{})
+	c.consumer.Remove(uint(deviceId))
 	c.states.Delete(uint(deviceId))
 	slog.Info("[device][delete] success", "id", deviceId)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// syncSubscription applies device changes to MQTT. A freshly subscribed device
+// is polled, otherwise its state stays empty until the next TelePeriod.
+func (c *DevicesController) syncSubscription(device *model.Device) {
+	if c.consumer.Sync(device) {
+		c.pub.PublishStates(device)
+	}
 }
 
 func (c *DevicesController) WipeSensorData(w http.ResponseWriter, r *http.Request) {

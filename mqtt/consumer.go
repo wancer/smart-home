@@ -4,14 +4,19 @@ import (
 	"fmt"
 	"log/slog"
 	"smart-home/internal"
+	"smart-home/model"
+	"sync"
 
 	driver "github.com/eclipse/paho.mqtt.golang"
 )
 
 type Consumer struct {
-	topics    []string
 	deviceMap *internal.DeviceStateManager
-	parser    *EventParser
+	handlers  map[string]driver.MessageHandler
+
+	lock       sync.Mutex
+	client     driver.Client   // set once connected
+	subscribed map[uint]string // device id => device topic it's subscribed with
 }
 
 func NewMqttConsumer(
@@ -19,51 +24,103 @@ func NewMqttConsumer(
 	parser *EventParser,
 ) *Consumer {
 	return &Consumer{
-		topics:    []string{},
-		deviceMap: deviceMap,
-		parser:    parser,
+		deviceMap:  deviceMap,
+		subscribed: map[uint]string{},
+		handlers: map[string]driver.MessageHandler{
+			"tele/%s/SENSOR":   parser.parseSensorEvent,
+			"tele/%s/LWT":      parser.parseLwt,
+			"tele/%s/RESULT":   parser.parseTeleResult,
+			"stat/%s/POWER":    parser.parsePowerEvent,
+			"stat/%s/RESULT":   parser.parseResult,
+			"stat/%s/STATUS2":  parser.parseFirmware,
+			"stat/%s/STATUS10": parser.parseState,
+
+			"stat/%s/STATUS":  parser.parseAsWarning,
+			"stat/%s/STATUS0": parser.parseAsWarning,
+			"stat/%s/STATUS1": parser.parseAsWarning,
+			"stat/%s/STATUS3": parser.parseAsWarning,
+			"stat/%s/STATUS4": parser.parseAsWarning,
+			"stat/%s/STATUS7": parser.parseAsWarning,
+			"stat/%s/TIMERS":  parser.parseTimers,
+		},
 	}
 }
 
+// Subscribe is the on-connect handler. The session is clean, so every connect
+// and reconnect starts with no subscriptions on the broker side.
 func (c *Consumer) Subscribe(client driver.Client) {
 	slog.Info("Connected to MQTT Broker")
 
-	topicsToSubscribe := map[string]driver.MessageHandler{
-		"tele/%s/SENSOR":   c.parser.parseSensorEvent,
-		"tele/%s/LWT":      c.parser.parseLwt,
-		"tele/%s/RESULT":   c.parser.parseTeleResult,
-		"stat/%s/POWER":    c.parser.parsePowerEvent,
-		"stat/%s/RESULT":   c.parser.parseResult,
-		"stat/%s/STATUS2":  c.parser.parseFirmware,
-		"stat/%s/STATUS10": c.parser.parseState,
+	c.lock.Lock()
+	defer c.lock.Unlock()
 
-		"stat/%s/STATUS":  c.parser.parseAsWarning,
-		"stat/%s/STATUS0": c.parser.parseAsWarning,
-		"stat/%s/STATUS1": c.parser.parseAsWarning,
-		"stat/%s/STATUS3": c.parser.parseAsWarning,
-		"stat/%s/STATUS4": c.parser.parseAsWarning,
-		"stat/%s/STATUS7": c.parser.parseAsWarning,
-		"stat/%s/TIMERS":  c.parser.parseTimers,
-	}
+	c.client = client
+	c.subscribed = map[uint]string{}
 
 	// ToDo: move out of here, remove states dependency
 	for _, device := range c.deviceMap.GetAll() {
-		for topicTpl, handler := range topicsToSubscribe {
-			topic := fmt.Sprintf(topicTpl, device.Device.Topic)
-			token := client.Subscribe(topic, 1, handler)
-			token.Wait()
-			slog.Debug("Subscribed to topic", "topic", topic)
-			c.topics = append(c.topics, topic)
+		if device.Device.Enabled {
+			c.subscribe(device.Device)
 		}
 	}
 
 	slog.Info("Mqtt consumer subscribed!")
 }
 
-func (c *Consumer) Shutdown(client driver.Client) {
-	for _, topic := range c.topics {
-		client.Unsubscribe(topic)
+// Sync brings the subscriptions of a created or updated device in line with its
+// Enabled flag and topic. Returns true if the device has just been subscribed.
+// Failures are only logged: the next reconnect subscribes from the current state.
+func (c *Consumer) Sync(device *model.Device) bool {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	if c.client == nil {
+		return false
 	}
-	client.Disconnect(250)
-	slog.Info("Mqqt consumer unsubscribed")
+
+	topic, ok := c.subscribed[device.ID]
+	if ok && (!device.Enabled || topic != device.Topic) {
+		c.unsubscribe(device.ID, topic)
+		ok = false
+	}
+
+	return device.Enabled && !ok && c.subscribe(device)
+}
+
+// Remove drops the subscriptions of a deleted device.
+func (c *Consumer) Remove(deviceId uint) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	if topic, ok := c.subscribed[deviceId]; ok {
+		c.unsubscribe(deviceId, topic)
+	}
+}
+
+func (c *Consumer) subscribe(device *model.Device) bool {
+	for topicTpl, handler := range c.handlers {
+		topic := fmt.Sprintf(topicTpl, device.Topic)
+		token := c.client.Subscribe(topic, 1, handler)
+		if token.Wait(); token.Error() != nil {
+			slog.Error("Can't subscribe to topic", "topic", topic, "err", token.Error())
+			return false
+		}
+		slog.Debug("Subscribed to topic", "topic", topic)
+	}
+
+	c.subscribed[device.ID] = device.Topic
+	return true
+}
+
+func (c *Consumer) unsubscribe(deviceId uint, deviceTopic string) {
+	topics := make([]string, 0, len(c.handlers))
+	for topicTpl := range c.handlers {
+		topics = append(topics, fmt.Sprintf(topicTpl, deviceTopic))
+	}
+
+	token := c.client.Unsubscribe(topics...)
+	if token.Wait(); token.Error() != nil {
+		slog.Error("Can't unsubscribe from device", "topic", deviceTopic, "err", token.Error())
+	}
+	delete(c.subscribed, deviceId)
 }

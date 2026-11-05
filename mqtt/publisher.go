@@ -48,6 +48,11 @@ func (p *Publisher) GetFirmware(device *model.Device) {
 	p.publish(device.Topic, "STATUS2", "2")
 }
 
+// Upgrade makes the device download firmware from its OtaUrl and restart.
+func (p *Publisher) Upgrade(device *model.Device) {
+	p.publish(device.Topic, "Upgrade", "1")
+}
+
 func (p *Publisher) GetParameters(device *model.Device) {
 	p.publish(device.Topic, "STATUS1", "1")
 }

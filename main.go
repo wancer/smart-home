@@ -48,8 +48,10 @@ func main() {
 					// ToDo: fix race condition when subscribe not yet finised
 					time.Sleep(2 * time.Second)
 					monitorStop := container.StateMonitor.Run()
+					firmwareStop := container.Firmware.Run()
 
 					defer close(monitorStop)
+					defer close(firmwareStop)
 					defer container.MqttClient.Disconnect(10_000) // 10s == 10k ms
 					defer container.Storage.Shutdown()
 

@@ -19,6 +19,7 @@ type Container struct {
 	MqttClient    driver.Client // interface
 	MqttPublisher *mqtt.Publisher
 	StateMonitor  *internal.StateMonitor
+	Firmware      *internal.FirmwareChecker
 	DeviceMap     *internal.DeviceMap
 	Web           *web.Server
 	Storage       *internal.Storage
@@ -55,6 +56,7 @@ func Build(cfg *config.Config) (*Container, error) {
 	mqttClient := mqtt.NewMqtt(cfg, consumer)
 	publisher := mqtt.NewPublisher(mqttClient)
 	stateMonitor := internal.NewStateMonitor(dispatcher, states)
+	firmwareChecker := internal.NewFirmwareChecker()
 
 	irRunner := automation.NewIrRuleRunner(db, states, publisher)
 	eventHandler := handler.NewEventHandler(states, publisher, storage, irRunner)
@@ -69,8 +71,8 @@ func Build(cfg *config.Config) (*Container, error) {
 	sensorsCtl := web.NewSensorsController(db, storage, states)
 	dailyCtl := web.NewSensorsDailyController(db, states)
 	configurableCtl := web.NewSensorsConfigurableController(db, states, storage)
-	devicesCtl := web.NewDevicesController(states, db, storage)
-	deviceControlCtl := web.NewDeviceControlController(publisher, states, config.GetNewTimezones())
+	devicesCtl := web.NewDevicesController(states, db, storage, consumer, publisher)
+	deviceControlCtl := web.NewDeviceControlController(publisher, states, config.GetNewTimezones(), firmwareChecker)
 	deviceTimersCtl := web.NewDeviceTimersController(publisher, states)
 	deviceRulesCtl := web.NewDeviceRulesController(publisher, states)
 	irCtl := web.NewIrController(db, states, publisher)
@@ -96,6 +98,7 @@ func Build(cfg *config.Config) (*Container, error) {
 		MqttClient:    mqttClient,
 		MqttPublisher: publisher,
 		StateMonitor:  stateMonitor,
+		Firmware:      firmwareChecker,
 		DeviceMap:     deviceMap,
 		Web:           webServer,
 		Storage:       storage,

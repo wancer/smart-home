@@ -29,16 +29,17 @@ func (m *StateMonitor) Run() chan struct{} {
 			case <-ticker.C:
 				now := time.Now()
 				for _, state := range m.states.GetAll() {
-					if state.Device.SensorType == model.SensorTypeIR { // availability comes from LWT
-						continue
-					}
-
 					if state.Online == false { // Already offline
 						continue
 					}
 
+					// availability comes from LWT, which stops arriving once disabled
+					if state.Device.SensorType == model.SensorTypeIR && state.Device.Enabled {
+						continue
+					}
+
 					// should be updated already
-					if state.LastUpdate == nil || now.Sub(*state.LastUpdate) > time.Minute {
+					if !state.Device.Enabled || state.LastUpdate == nil || now.Sub(*state.LastUpdate) > time.Minute {
 						slog.Warn("Marking as MIA", "deviceId", state.Device.ID)
 						event := &event.InternalOfflineEvent{
 							DeviceId: state.Device.ID,

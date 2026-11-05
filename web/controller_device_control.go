@@ -20,17 +20,20 @@ type DeviceControlController struct {
 	pub       *mqtt.Publisher
 	states    *internal.DeviceStateManager
 	timezones *config.TimezonesConfig
+	firmware  *internal.FirmwareChecker
 }
 
 func NewDeviceControlController(
 	pub *mqtt.Publisher,
 	states *internal.DeviceStateManager,
 	timezones *config.TimezonesConfig,
+	firmware *internal.FirmwareChecker,
 ) *DeviceControlController {
 	return &DeviceControlController{
 		pub:       pub,
 		states:    states,
 		timezones: timezones,
+		firmware:  firmware,
 	}
 }
 
@@ -98,7 +101,7 @@ func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
 			LedPwmMode: state.Config.LedPwmMode,
 		},
 		Timezone: c.resolveTimezone(state),
-		Firmware: NewFirmwareConfig(state.Firmware),
+		Firmware: NewFirmwareConfig(state.Firmware, c.firmware.Latest()),
 		Hardware: state.Hardware,
 	}
 
@@ -184,12 +187,36 @@ func (c *DeviceControlController) GetHardware(w http.ResponseWriter, r *http.Req
 
 	cfg := HardwareConfig{
 		Hardware: state.Hardware,
-		Firmware: NewFirmwareConfig(state.Firmware),
+		Firmware: NewFirmwareConfig(state.Firmware, c.firmware.Latest()),
 	}
 
 	slog.Info("[device][hardware-get] success", "deviceId", deviceId)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(cfg)
+}
+
+// UpgradeFirmware only triggers the upgrade: the device downloads the image and restarts on its own.
+func (c *DeviceControlController) UpgradeFirmware(w http.ResponseWriter, r *http.Request) {
+	deviceId, err := c.parseDeviceId(r)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	state := c.states.GetById(deviceId)
+	if state == nil {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+	if !state.Online {
+		slog.Warn("[device][firmware-upgrade] device is offline", "deviceId", deviceId)
+		http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
+		return
+	}
+
+	c.pub.Upgrade(state.Device)
+
+	slog.Info("[device][firmware-upgrade] success", "deviceId", deviceId)
+	w.WriteHeader(http.StatusOK)
 }
 
 func (c *DeviceControlController) Do(w http.ResponseWriter, r *http.Request) {

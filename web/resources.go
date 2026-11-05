@@ -192,13 +192,19 @@ type DeviceSensorDailyEvent struct {
 }
 
 type FirmwareConfig struct {
-	Version *string `json:"version"`
-	BuildAt *string `json:"buildAt"`
+	Version         *string `json:"version"`
+	BuildAt         *string `json:"buildAt"`
+	LatestVersion   *string `json:"latestVersion"`
+	UpdateAvailable bool    `json:"updateAvailable"`
 }
 
-func NewFirmwareConfig(c *internal.DeviceFirmware) FirmwareConfig {
+func NewFirmwareConfig(c *internal.DeviceFirmware, latest *string) FirmwareConfig {
 	firmware := FirmwareConfig{
-		Version: c.Version,
+		Version:       c.Version,
+		LatestVersion: latest,
+	}
+	if c.Version != nil && latest != nil {
+		firmware.UpdateAvailable = internal.IsFirmwareOutdated(*c.Version, *latest)
 	}
 	if c.BuiltAt != nil {
 		formatted := c.BuiltAt.Format(time.DateTime)

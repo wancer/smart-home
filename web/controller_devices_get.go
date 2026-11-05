@@ -5,20 +5,29 @@ import (
 	"log/slog"
 	"net/http"
 	"smart-home/internal"
+	"smart-home/mqtt"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 )
 
-func NewDevicesController(deviceStates *internal.DeviceStateManager, db *gorm.DB, storage *internal.Storage) *DevicesController {
-	return &DevicesController{states: deviceStates, db: db, storage: storage}
+func NewDevicesController(
+	deviceStates *internal.DeviceStateManager,
+	db *gorm.DB,
+	storage *internal.Storage,
+	consumer *mqtt.Consumer,
+	pub *mqtt.Publisher,
+) *DevicesController {
+	return &DevicesController{states: deviceStates, db: db, storage: storage, consumer: consumer, pub: pub}
 }
 
 type DevicesController struct {
-	states  *internal.DeviceStateManager
-	db      *gorm.DB
-	storage *internal.Storage
+	states   *internal.DeviceStateManager
+	db       *gorm.DB
+	storage  *internal.Storage
+	consumer *mqtt.Consumer
+	pub      *mqtt.Publisher
 }
 
 func (c *DevicesController) GetAll(w http.ResponseWriter, r *http.Request) {

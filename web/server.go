@@ -65,6 +65,7 @@ func NewWebServer(
 		r.Get("/api/devices/{deviceId}/led", control.GetLed)
 		r.Get("/api/devices/{deviceId}/timing", control.GetTiming)
 		r.Get("/api/devices/{deviceId}/hardware", control.GetHardware)
+		r.Post("/api/devices/{deviceId}/firmware/upgrade", control.UpgradeFirmware)
 		r.Get("/api/devices/{deviceId}/timers", timers.Get)
 		r.Post("/api/devices/{deviceId}/timers/{n}", timers.Set)
 		r.Get("/api/devices/{deviceId}/rules", rules.Get)

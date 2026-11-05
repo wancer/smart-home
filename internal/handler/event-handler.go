@@ -50,6 +50,10 @@ func (h *EventHandler) Subscribe(dispatcher *event.Dispatcher, states *internal.
 			func(raw any) {
 				e := raw.(event.MqttEvent)
 				deviceState := states.GetByTopic(e.Topic)
+				if deviceState == nil { // in-flight message of a deleted or renamed device
+					return
+				}
+
 				t.MethodByName(m.Name).Call(
 					[]reflect.Value{
 						reflect.ValueOf(deviceState),
