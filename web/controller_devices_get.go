@@ -31,11 +31,26 @@ type DevicesController struct {
 }
 
 func (c *DevicesController) GetAll(w http.ResponseWriter, r *http.Request) {
+	sizes, err := c.storage.GetHistorySizes(r.Context())
+	if err != nil {
+		slog.Error("[device][get-all] history size error", "err", err)
+	}
+
 	events := map[uint]*DeviceResponse{}
 	for _, state := range c.states.GetAll() {
 		event := NewDeviceResponse(state)
 		if state.LastUpdate != nil {
 			event.State.LastUpdate = new(state.LastUpdate.Unix())
+		}
+
+		if err == nil {
+			size := sizes[state.Device.ID]
+			event.SensorHistory = &SensorHistorySize{
+				Aggregates: size.Aggregates,
+				Daily:      size.Daily,
+				Archived:   size.Archived,
+				Oldest:     size.Oldest,
+			}
 		}
 
 		events[state.Device.ID] = event

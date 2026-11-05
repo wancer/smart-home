@@ -165,6 +165,16 @@ type DeviceResponse struct {
 	SensorType     string       `json:"sensorType"`
 	SupportsToggle bool         `json:"supportsToggle"`
 	State          *DeviceState `json:"state"`
+
+	// SensorHistory is only filled in the device list.
+	SensorHistory *SensorHistorySize `json:"sensorHistory,omitempty"`
+}
+
+type SensorHistorySize struct {
+	Aggregates int64  `json:"aggregates"`
+	Daily      int64  `json:"daily"`
+	Archived   int64  `json:"archived"`
+	Oldest     *int64 `json:"oldest"`
 }
 
 type WsStateEvent struct {
