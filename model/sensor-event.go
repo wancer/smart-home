@@ -18,7 +18,6 @@ type SensorEvent struct {
 	Voltage       *uint
 	// CO2 + TempHumidity
 	CO2         *uint
-	CO2e        *uint
 	Temperature *float32
 	Humidity    *float32
 	DewPoint    *float32

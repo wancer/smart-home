@@ -18,7 +18,6 @@ func (h *EventHandler) InternalHandleOffline(e *event.InternalOfflineEvent) {
 	state.Power = nil
 
 	state.CO2 = nil
-	state.CO2E = nil
 	state.Temperature = nil
 	state.Humidity = nil
 	state.DewPoint = nil

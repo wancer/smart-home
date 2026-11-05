@@ -35,7 +35,6 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 		state.Voltage = &e.Energy.Voltage
 		state.Today = &e.Energy.Today
 	case model.SensorTypeCo2:
-		state.CO2E = &e.Co2.CO2E
 		state.CO2 = &e.Co2.CO2
 		state.Temperature = &e.Co2.Temperature
 		state.Humidity = &e.Co2.Humidity
@@ -64,7 +63,6 @@ func toModel(e *event.SensorEvent, device *model.Device, now *time.Time) *model.
 		r.Voltage = &e.Energy.Voltage
 		r.Current = &e.Energy.Current
 	case model.SensorTypeCo2:
-		r.CO2e = &e.Co2.CO2E
 		r.CO2 = &e.Co2.CO2
 		r.Temperature = &e.Co2.Temperature
 		r.Humidity = &e.Co2.Humidity

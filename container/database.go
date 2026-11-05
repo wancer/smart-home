@@ -35,8 +35,35 @@ func (init *DatabaseInitializer) migrate() error {
 	if err := init.db.AutoMigrate(&model.IrRule{}, &model.IrRuleAction{}); err != nil {
 		return err
 	}
+	if err := init.dropCO2e(); err != nil {
+		return err
+	}
 	if err := init.backfillAggregates(); err != nil {
 		return err
+	}
+	return nil
+}
+
+// dropCO2e removes the eCO2 columns: Tasmota stopped reporting eCO2 in v15.5.0.
+// AutoMigrate never drops columns, so this is done explicitly. It is a no-op once
+// the columns are gone, and on fresh databases. Run VACUUM to shrink the file.
+func (init *DatabaseInitializer) dropCO2e() error {
+	columns := []struct {
+		model  any
+		table  string
+		column string
+	}{
+		{&model.SensorAggregate{}, "sensor_aggregate", "co2e_avg"},
+		{&model.SensorEvent{}, "sensor_event", "co2e"},
+	}
+	for _, c := range columns {
+		if !init.db.Migrator().HasColumn(c.model, c.column) {
+			continue
+		}
+		slog.Info("Dropping column", "table", c.table, "column", c.column)
+		if err := init.db.Exec("ALTER TABLE " + c.table + " DROP COLUMN " + c.column).Error; err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -67,7 +94,7 @@ func (init *DatabaseInitializer) backfillAggregates() error {
 INSERT INTO sensor_aggregate
     (device_id, bucket_time, count,
      power_consumed, power_avg, current_avg, voltage_avg,
-     co2_avg, co2e_avg,
+     co2_avg,
      temperature_avg, humidity_avg, dew_point_avg)
 SELECT
     device_id,
@@ -81,7 +108,6 @@ SELECT
     AVG(current)                                          AS current_avg,
     AVG(voltage)                                          AS voltage_avg,
     AVG(co2)                                              AS co2_avg,
-    AVG(co2e)                                             AS co2e_avg,
     AVG(temperature)                                      AS temperature_avg,
     AVG(humidity)                                         AS humidity_avg,
     AVG(dew_point)                                        AS dew_point_avg

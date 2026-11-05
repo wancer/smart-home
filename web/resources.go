@@ -18,7 +18,6 @@ type SensorEvent struct {
 	Voltage *uint    `json:"voltage"`
 
 	CO2Dioxide  *uint    `json:"co2"`
-	CO2E        *uint    `json:"co2e"`
 	Temperature *float32 `json:"temperature"`
 	Humidity    *float32 `json:"humidity"`
 }
@@ -36,7 +35,6 @@ func NewSensorFromEvent(e *event.SensorEvent, d *model.Device) *SensorEvent {
 		normalized.Current = &e.Energy.Current
 		normalized.Voltage = &e.Energy.Voltage
 	case model.SensorTypeCo2:
-		normalized.CO2E = &e.Co2.CO2E
 		normalized.CO2Dioxide = &e.Co2.CO2
 		normalized.Temperature = &e.Co2.Temperature
 		normalized.Humidity = &e.Co2.Humidity
@@ -64,7 +62,6 @@ func NewSensorEvent(dbRecord *model.SensorEvent, d *model.Device) *SensorEvent {
 		normalized.Current = dbRecord.Current
 		normalized.Voltage = dbRecord.Voltage
 	case model.SensorTypeCo2:
-		normalized.CO2E = dbRecord.CO2e
 		normalized.CO2Dioxide = dbRecord.CO2
 		normalized.Temperature = dbRecord.Temperature
 		normalized.Humidity = dbRecord.Humidity
@@ -102,10 +99,6 @@ func NewSensorEventFromAggregate(agg *model.SensorAggregate, d *model.Device) *S
 			v := uint(*agg.CO2Avg)
 			normalized.CO2Dioxide = &v
 		}
-		if agg.CO2eAvg != nil {
-			v := uint(*agg.CO2eAvg)
-			normalized.CO2E = &v
-		}
 		normalized.Temperature = agg.TemperatureAvg
 		normalized.Humidity = agg.HumidityAvg
 	case model.SensorTypeTempHumid:
@@ -136,7 +129,6 @@ func NewDeviceResponse(state *internal.DeviceState) *DeviceResponse {
 
 			Current:     state.Current,
 			CO2:         state.CO2,
-			CO2E:        state.CO2E,
 			Temperature: state.Temperature,
 			Humidity:    state.Humidity,
 		},
@@ -152,7 +144,6 @@ type DeviceState struct {
 	Voltage *uint    `json:"voltage"`
 
 	CO2         *uint    `json:"co2"`
-	CO2E        *uint    `json:"co2e"`
 	Temperature *float32 `json:"temperature"`
 	Humidity    *float32 `json:"humidity"`
 }
@@ -191,7 +182,6 @@ type DeviceSensorEvent struct {
 	VoltageAvg    *uint    `json:"voltageAvg"`
 
 	CO2Avg         *uint    `json:"co2Avg"`
-	CO2eAvg        *uint    `json:"co2eAvg"`
 	TemperatureAvg *float32 `json:"temperatureAvg"`
 	HumidityAvg    *float32 `json:"humidityAvg"`
 }

@@ -98,7 +98,6 @@ type aggregateBucket struct {
 	voltageSum    float32
 	hasEnergy     bool
 	co2Sum        float32
-	co2eSum       float32
 	hasCo2        bool
 	tempSum       float32
 	humiditySum   float32
@@ -130,9 +129,6 @@ func groupIntoBuckets(events []*model.SensorEvent) map[time.Time]*aggregateBucke
 		if r.CO2 != nil {
 			d.co2Sum += float32(*r.CO2)
 			d.hasCo2 = true
-		}
-		if r.CO2e != nil {
-			d.co2eSum += float32(*r.CO2e)
 		}
 		if r.Temperature != nil {
 			d.tempSum += *r.Temperature
@@ -167,9 +163,7 @@ func bucketToAggregate(deviceId uint, bucketTime time.Time, data *aggregateBucke
 	}
 	if data.hasCo2 {
 		co2 := data.co2Sum / n
-		co2e := data.co2eSum / n
 		agg.CO2Avg = &co2
-		agg.CO2eAvg = &co2e
 	}
 	if data.hasTH {
 		temp := data.tempSum / n
@@ -227,7 +221,6 @@ func mergeAggregate(existing, new *model.SensorAggregate) model.SensorAggregate 
 		CurrentAvg:     mergeWeightedAvg(existing.CurrentAvg, n1, new.CurrentAvg, n2, total),
 		VoltageAvg:     mergeWeightedAvg(existing.VoltageAvg, n1, new.VoltageAvg, n2, total),
 		CO2Avg:         mergeWeightedAvg(existing.CO2Avg, n1, new.CO2Avg, n2, total),
-		CO2eAvg:        mergeWeightedAvg(existing.CO2eAvg, n1, new.CO2eAvg, n2, total),
 		TemperatureAvg: mergeWeightedAvg(existing.TemperatureAvg, n1, new.TemperatureAvg, n2, total),
 		HumidityAvg:    mergeWeightedAvg(existing.HumidityAvg, n1, new.HumidityAvg, n2, total),
 		DewPointAvg:    mergeWeightedAvg(existing.DewPointAvg, n1, new.DewPointAvg, n2, total),

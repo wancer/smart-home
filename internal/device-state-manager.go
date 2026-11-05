@@ -68,7 +68,6 @@ type DeviceState struct {
 	Today   *float32 // W*h
 
 	CO2         *uint
-	CO2E        *uint
 	Temperature *float32
 	Humidity    *float32
 	DewPoint    *float32

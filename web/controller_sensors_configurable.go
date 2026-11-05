@@ -115,7 +115,6 @@ func (c *SensorsConfigurableController) buildRecords(
 			CurrentAvg:     nil,
 			VoltageAvg:     nil,
 			CO2Avg:         nil,
-			CO2eAvg:        nil,
 			TemperatureAvg: nil,
 			HumidityAvg:    nil,
 		}
@@ -152,7 +151,7 @@ func (c *SensorsConfigurableController) buildRecords(
 				}
 
 			case model.SensorTypeCo2:
-				var tempSum, humSum, co2Sum, co2eSum float32
+				var tempSum, humSum, co2Sum float32
 				var totalCount uint
 				for _, m := range matching {
 					totalCount += m.Count
@@ -161,9 +160,6 @@ func (c *SensorsConfigurableController) buildRecords(
 					}
 					if m.CO2Avg != nil {
 						co2Sum += *m.CO2Avg * float32(m.Count)
-					}
-					if m.CO2eAvg != nil {
-						co2eSum += *m.CO2eAvg * float32(m.Count)
 					}
 					if m.HumidityAvg != nil {
 						humSum += *m.HumidityAvg * float32(m.Count)
@@ -174,11 +170,9 @@ func (c *SensorsConfigurableController) buildRecords(
 					temp := tempSum / n
 					hum := humSum / n
 					co2 := uint(co2Sum / n)
-					co2e := uint(co2eSum / n)
 					record.TemperatureAvg = &temp
 					record.HumidityAvg = &hum
 					record.CO2Avg = &co2
-					record.CO2eAvg = &co2e
 				}
 
 			case model.SensorTypeTempHumid:

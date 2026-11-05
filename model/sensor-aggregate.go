@@ -14,8 +14,7 @@ type SensorAggregate struct {
 	CurrentAvg    *float32
 	VoltageAvg    *float32
 
-	CO2Avg  *float32
-	CO2eAvg *float32
+	CO2Avg *float32
 
 	TemperatureAvg *float32
 	HumidityAvg    *float32
