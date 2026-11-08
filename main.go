@@ -49,9 +49,13 @@ func main() {
 					time.Sleep(2 * time.Second)
 					monitorStop := container.StateMonitor.Run()
 					firmwareStop := container.Firmware.Run()
+					telegramStop := container.Telegram.Run()
+					notifierStop := container.Notifier.Run()
 
 					defer close(monitorStop)
 					defer close(firmwareStop)
+					defer close(telegramStop)
+					defer close(notifierStop)
 					defer container.MqttClient.Disconnect(10_000) // 10s == 10k ms
 					defer container.Storage.Shutdown()
 

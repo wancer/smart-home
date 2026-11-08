@@ -15,7 +15,12 @@ func (h *EventHandler) HandleLwt(state *internal.DeviceState, e *event.Lwt) {
 	}
 
 	now := time.Now()
+	changed := state.Online != bool(*e)
 	state.Online = bool(*e)
 	state.On = new(bool(*e)) // IR has no power control: "on" simply mirrors availability
 	state.LastUpdate = &now
+
+	if changed {
+		h.dispatcher.Dispatch(&event.DeviceAvailability{DeviceId: state.Device.ID, Online: state.Online})
+	}
 }

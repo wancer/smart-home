@@ -35,6 +35,9 @@ func (init *DatabaseInitializer) migrate() error {
 	if err := init.db.AutoMigrate(&model.IrRule{}, &model.IrRuleAction{}); err != nil {
 		return err
 	}
+	if err := init.db.AutoMigrate(&model.NotifyRule{}); err != nil {
+		return err
+	}
 	if err := init.dropCO2e(); err != nil {
 		return err
 	}

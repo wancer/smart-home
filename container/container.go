@@ -20,6 +20,8 @@ type Container struct {
 	MqttPublisher *mqtt.Publisher
 	StateMonitor  *internal.StateMonitor
 	Firmware      *internal.FirmwareChecker
+	Telegram      *internal.TelegramNotifier
+	Notifier      *automation.Notifier
 	DeviceMap     *internal.DeviceMap
 	Web           *web.Server
 	Storage       *internal.Storage
@@ -58,8 +60,15 @@ func Build(cfg *config.Config) (*Container, error) {
 	stateMonitor := internal.NewStateMonitor(dispatcher, states)
 	firmwareChecker := internal.NewFirmwareChecker()
 
+	telegram := internal.NewTelegramNotifier(cfg.Telegram.BotToken, cfg.Telegram.ChatID)
+	notifier := automation.NewNotifier(db, states, telegram)
+	if err := notifier.Reload(); err != nil {
+		return nil, err
+	}
+	notifier.Subscribe(dispatcher)
+
 	irRunner := automation.NewIrRuleRunner(db, states, publisher)
-	eventHandler := handler.NewEventHandler(states, publisher, storage, irRunner)
+	eventHandler := handler.NewEventHandler(dispatcher, states, publisher, storage, irRunner)
 	eventHandler.Subscribe(dispatcher, states)
 
 	ws := web.NewWebSocketServer()
@@ -71,12 +80,13 @@ func Build(cfg *config.Config) (*Container, error) {
 	sensorsCtl := web.NewSensorsController(db, storage, states)
 	dailyCtl := web.NewSensorsDailyController(db, states)
 	configurableCtl := web.NewSensorsConfigurableController(db, states, storage)
-	devicesCtl := web.NewDevicesController(states, db, storage, consumer, publisher)
+	devicesCtl := web.NewDevicesController(states, db, storage, consumer, publisher, notifier)
 	deviceControlCtl := web.NewDeviceControlController(publisher, states, config.GetNewTimezones(), firmwareChecker)
 	deviceTimersCtl := web.NewDeviceTimersController(publisher, states)
 	deviceRulesCtl := web.NewDeviceRulesController(publisher, states)
 	irCtl := web.NewIrController(db, states, publisher)
 	irRulesCtl := web.NewIrRulesController(db, states, irRunner)
+	notificationsCtl := web.NewNotificationsController(db, states, notifier, telegram)
 
 	webServer := web.NewWebServer(
 		cfg.Web,
@@ -91,6 +101,7 @@ func Build(cfg *config.Config) (*Container, error) {
 		deviceRulesCtl,
 		irCtl,
 		irRulesCtl,
+		notificationsCtl,
 		authCtl,
 	)
 
@@ -99,6 +110,8 @@ func Build(cfg *config.Config) (*Container, error) {
 		MqttPublisher: publisher,
 		StateMonitor:  stateMonitor,
 		Firmware:      firmwareChecker,
+		Telegram:      telegram,
+		Notifier:      notifier,
 		DeviceMap:     deviceMap,
 		Web:           webServer,
 		Storage:       storage,

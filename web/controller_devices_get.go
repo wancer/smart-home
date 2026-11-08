@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"smart-home/automation"
 	"smart-home/internal"
 	"smart-home/mqtt"
 	"strconv"
@@ -18,8 +19,9 @@ func NewDevicesController(
 	storage *internal.Storage,
 	consumer *mqtt.Consumer,
 	pub *mqtt.Publisher,
+	notifier *automation.Notifier,
 ) *DevicesController {
-	return &DevicesController{states: deviceStates, db: db, storage: storage, consumer: consumer, pub: pub}
+	return &DevicesController{states: deviceStates, db: db, storage: storage, consumer: consumer, pub: pub, notifier: notifier}
 }
 
 type DevicesController struct {
@@ -28,6 +30,7 @@ type DevicesController struct {
 	storage  *internal.Storage
 	consumer *mqtt.Consumer
 	pub      *mqtt.Publisher
+	notifier *automation.Notifier
 }
 
 func (c *DevicesController) GetAll(w http.ResponseWriter, r *http.Request) {

@@ -24,6 +24,7 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 		slog.Info(fmt.Sprintf("Getting %s online", state.Device.Name))
 		state.Online = true
 		h.p.PublishStates(state.Device)
+		h.dispatcher.Dispatch(&event.DeviceAvailability{DeviceId: state.Device.ID, Online: true})
 	}
 
 	switch state.Device.SensorType {
@@ -45,7 +46,10 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 		state.DewPoint = &e.TempHum.DewPoint
 	default:
 		slog.Error("UNKOWN_TYPE: " + state.Device.SensorType)
+		return
 	}
+
+	h.dispatcher.Dispatch(&event.SensorsUpdated{DeviceId: state.Device.ID})
 }
 
 func toModel(e *event.SensorEvent, device *model.Device, now *time.Time) *model.SensorEvent {

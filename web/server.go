@@ -32,6 +32,7 @@ func NewWebServer(
 	rules *DeviceRulesController,
 	ir *IrController,
 	irRules *IrRulesController,
+	notifications *NotificationsController,
 	auth *AuthController,
 ) *Server {
 	r := chi.NewMux()
@@ -80,6 +81,11 @@ func NewWebServer(
 		r.Post("/api/devices/{deviceId}/ir/rules", irRules.Create)
 		r.Put("/api/devices/{deviceId}/ir/rules/{ruleId}", irRules.Update)
 		r.Delete("/api/devices/{deviceId}/ir/rules/{ruleId}", irRules.Delete)
+		r.Get("/api/devices/{deviceId}/notifications", notifications.Get)
+		r.Post("/api/devices/{deviceId}/notifications", notifications.Create)
+		r.Put("/api/devices/{deviceId}/notifications/{ruleId}", notifications.Update)
+		r.Delete("/api/devices/{deviceId}/notifications/{ruleId}", notifications.Delete)
+		r.Post("/api/notifications/test", notifications.Test)
 		r.Get("/api/devices", devices.GetAll)
 		r.Post("/api/devices", devices.Create)
 		r.Get("/api/devices/{deviceId}", devices.Get)

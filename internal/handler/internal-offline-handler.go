@@ -4,6 +4,9 @@ import "smart-home/event"
 
 func (h *EventHandler) InternalHandleOffline(e *event.InternalOfflineEvent) {
 	state := h.states.GetById(e.DeviceId)
+	if state == nil { // deleted meanwhile
+		return
+	}
 
 	state.Online = false
 
@@ -21,4 +24,6 @@ func (h *EventHandler) InternalHandleOffline(e *event.InternalOfflineEvent) {
 	state.Temperature = nil
 	state.Humidity = nil
 	state.DewPoint = nil
+
+	h.dispatcher.Dispatch(&event.DeviceAvailability{DeviceId: e.DeviceId, Online: false})
 }

@@ -112,6 +112,10 @@ func (c *DevicesController) Delete(w http.ResponseWriter, r *http.Request) {
 	c.db.WithContext(r.Context()).Where("device_id = ?", uint(deviceId)).Delete(&model.IrSignal{})
 	c.db.WithContext(r.Context()).Where("rule_id IN (?)", c.db.Model(&model.IrRule{}).Select("id").Where("device_id = ?", uint(deviceId))).Delete(&model.IrRuleAction{})
 	c.db.WithContext(r.Context()).Where("device_id = ?", uint(deviceId)).Delete(&model.IrRule{})
+	c.db.WithContext(r.Context()).Where("device_id = ?", uint(deviceId)).Delete(&model.NotifyRule{})
+	if err := c.notifier.Reload(); err != nil {
+		slog.Error("[device][delete] notifier reload error", "err", err)
+	}
 	c.consumer.Remove(uint(deviceId))
 	c.states.Delete(uint(deviceId))
 	slog.Info("[device][delete] success", "id", deviceId)

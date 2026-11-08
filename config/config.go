@@ -45,14 +45,20 @@ type StorageConfig struct {
 }
 
 type Config struct {
-	Web     *WebConfig     `env:",init" envPrefix:"WEB_"`
-	Mqtt    *MqttConfig    `env:",init" envPrefix:"MQTT_"`
-	Storage *StorageConfig `env:",init" envPrefix:"STORAGE_"`
-	Logger  *LoggerConfig  `env:",init" envPrefix:"LOG_"`
+	Web      *WebConfig      `env:",init" envPrefix:"WEB_"`
+	Mqtt     *MqttConfig     `env:",init" envPrefix:"MQTT_"`
+	Storage  *StorageConfig  `env:",init" envPrefix:"STORAGE_"`
+	Telegram *TelegramConfig `env:",init" envPrefix:"TELEGRAM_"`
+	Logger   *LoggerConfig   `env:",init" envPrefix:"LOG_"`
 }
 
 type LoggerConfig struct {
 	Level slog.Level `env:"LEVEL" envDefault:"INFO"`
+}
+
+type TelegramConfig struct {
+	BotToken string `env:"BOT_TOKEN"`
+	ChatID   string `env:"CHAT_ID"`
 }
 
 func Load() (*Config, error) {
