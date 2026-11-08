@@ -19,8 +19,11 @@ type JwtConfig struct {
 	TTL    time.Duration `env:"TTL" envDefault:"1h"`
 }
 
-// MinJwtSecretLen is the minimum HS256 key length (bytes) accepted at startup.
-const MinJwtSecretLen = 32
+const (
+	MinJwtSecretLen = 32
+	DefaultJwtTTL   = time.Hour
+	MaxJwtTTL       = 256 * time.Hour
+)
 
 type GoogleOauth struct {
 	ClientID string `env:"CLIENT_ID,required"`
@@ -91,24 +94,14 @@ func (c *WebConfig) validate() error {
 	if len(c.Jwt.Secret) < MinJwtSecretLen {
 		return fmt.Errorf("WEB_JWT_SECRET must be at least %d bytes (generate with: openssl rand -base64 48)", MinJwtSecretLen)
 	}
-	if c.Jwt.TTL <= 0 || c.Jwt.TTL > 24*time.Hour {
+	if c.Jwt.TTL <= 0 || c.Jwt.TTL > MaxJwtTTL {
 		return fmt.Errorf("WEB_JWT_TTL must be between 0 and 24h, got %s", c.Jwt.TTL)
 	}
-	if nonEmpty(c.Oauth.AllowedSubs) == 0 {
+	if len(c.Oauth.AllowedSubs) == 0 {
 		return fmt.Errorf("WEB_OAUTH_ALLOWED_SUBS must list at least one Google account sub")
 	}
-	if nonEmpty(c.Oauth.AllowedEmails) == 0 {
+	if len(c.Oauth.AllowedEmails) == 0 {
 		return fmt.Errorf("WEB_OAUTH_ALLOWED_EMAILS must list at least one email")
 	}
 	return nil
-}
-
-func nonEmpty(list []string) int {
-	n := 0
-	for _, v := range list {
-		if v != "" {
-			n++
-		}
-	}
-	return n
 }

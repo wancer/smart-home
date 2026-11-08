@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"smart-home/event"
 	"smart-home/internal"
+	"smart-home/model"
 	"sync"
 	"time"
 
@@ -134,6 +135,25 @@ func (s *WebSocketServer) Subscribe(dispatcher *event.Dispatcher, states *intern
 
 			wsEvent := NewSensorFromEvent(p, deviceState.Device)
 			s.Send("sensor", wsEvent)
+		},
+	)
+
+	// IR devices get their availability from LWT only, which emits no Power or
+	// InternalOfflineEvent, so push their online/offline transitions explicitly.
+	dispatcher.Subscribe(
+		"DeviceAvailability",
+		func(raw any) {
+			e := raw.(*event.DeviceAvailability)
+			deviceState := states.GetById(e.DeviceId)
+			if deviceState == nil || deviceState.Device.SensorType != model.SensorTypeIR {
+				return
+			}
+
+			wsEvent := WsStateEvent{ID: e.DeviceId}
+			if e.Online {
+				wsEvent.On = new(true)
+			}
+			s.Send("state", wsEvent)
 		},
 	)
 
