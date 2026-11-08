@@ -8,7 +8,9 @@ import (
 	"smart-home/event"
 	"smart-home/internal"
 	"sync"
+	"time"
 
+	"github.com/go-chi/jwtauth/v5"
 	"github.com/gorilla/websocket"
 )
 
@@ -32,6 +34,10 @@ func NewWebSocketServer() *WebSocketServer {
 	}
 }
 
+// wsCloseTokenExpired is the close code sent when the connection's JWT
+// expires (4000-4999 is the application-defined range).
+const wsCloseTokenExpired = 4001
+
 func (s *WebSocketServer) handleConnections(w http.ResponseWriter, r *http.Request) {
 	ws, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -39,6 +45,23 @@ func (s *WebSocketServer) handleConnections(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	defer ws.Close()
+
+	// The HTTP server's Read/WriteTimeout deadlines carry over to the hijacked
+	// connection; clear them so long-lived sockets aren't cut off.
+	_ = ws.NetConn().SetDeadline(time.Time{})
+
+	// Close the socket when its JWT expires; the client must reconnect with a
+	// fresh token. The authenticator guarantees a valid token with exp here.
+	if token, _, err := jwtauth.FromContext(r.Context()); err == nil && token != nil {
+		if exp, ok := token.Expiration(); ok {
+			timer := time.AfterFunc(time.Until(exp), func() {
+				msg := websocket.FormatCloseMessage(wsCloseTokenExpired, "token expired")
+				_ = ws.WriteControl(websocket.CloseMessage, msg, time.Now().Add(time.Second))
+				_ = ws.Close()
+			})
+			defer timer.Stop()
+		}
+	}
 
 	s.clients[ws] = true
 

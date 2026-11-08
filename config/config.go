@@ -15,12 +15,19 @@ type CorsConfig struct {
 }
 
 type JwtConfig struct {
-	Secret string `env:"SECRET"`
+	Secret string        `env:"SECRET,required"`
+	TTL    time.Duration `env:"TTL" envDefault:"1h"`
 }
 
+// MinJwtSecretLen is the minimum HS256 key length (bytes) accepted at startup.
+const MinJwtSecretLen = 32
+
 type GoogleOauth struct {
-	ClientID      string   `env:"CLIENT_ID"`
-	AllowedEmails []string `env:"ALLOWED_EMAILS" envSeparator:","`
+	ClientID string `env:"CLIENT_ID,required"`
+	// AllowedSubs is the primary whitelist (Google's stable account ID).
+	AllowedSubs []string `env:"ALLOWED_SUBS,required" envSeparator:","`
+	// AllowedEmails is a second check: the token's email must also be listed.
+	AllowedEmails []string `env:"ALLOWED_EMAILS,required" envSeparator:","`
 }
 
 type WebConfig struct {
@@ -66,7 +73,11 @@ func Load() (*Config, error) {
 
 	var config Config
 	if err := envconfig.Parse(&config); err != nil {
-		panic(err)
+		return nil, err
+	}
+
+	if err := config.Web.validate(); err != nil {
+		return nil, err
 	}
 
 	if config.Storage.Driver != "sqlite" {
@@ -74,4 +85,30 @@ func Load() (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+func (c *WebConfig) validate() error {
+	if len(c.Jwt.Secret) < MinJwtSecretLen {
+		return fmt.Errorf("WEB_JWT_SECRET must be at least %d bytes (generate with: openssl rand -base64 48)", MinJwtSecretLen)
+	}
+	if c.Jwt.TTL <= 0 || c.Jwt.TTL > 24*time.Hour {
+		return fmt.Errorf("WEB_JWT_TTL must be between 0 and 24h, got %s", c.Jwt.TTL)
+	}
+	if nonEmpty(c.Oauth.AllowedSubs) == 0 {
+		return fmt.Errorf("WEB_OAUTH_ALLOWED_SUBS must list at least one Google account sub")
+	}
+	if nonEmpty(c.Oauth.AllowedEmails) == 0 {
+		return fmt.Errorf("WEB_OAUTH_ALLOWED_EMAILS must list at least one email")
+	}
+	return nil
+}
+
+func nonEmpty(list []string) int {
+	n := 0
+	for _, v := range list {
+		if v != "" {
+			n++
+		}
+	}
+	return n
 }

@@ -10,6 +10,7 @@ require (
 	github.com/go-chi/jwtauth/v5 v5.4.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
+	github.com/lestrrat-go/jwx/v3 v3.4.0
 	github.com/urfave/cli/v3 v3.14.0
 	google.golang.org/api v0.311.0
 	gorm.io/datatypes v1.2.7
@@ -44,7 +45,6 @@ require (
 	github.com/lestrrat-go/httprc/v3 v3.0.6 // indirect
 	github.com/lestrrat-go/iter v1.0.2 // indirect
 	github.com/lestrrat-go/jwx/v2 v2.0.19 // indirect
-	github.com/lestrrat-go/jwx/v3 v3.4.0 // indirect
 	github.com/lestrrat-go/option v1.0.1 // indirect
 	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.52 // indirect

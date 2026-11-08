@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"smart-home/config"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -123,8 +124,13 @@ func NewWebServer(
 func (s *Server) Start(ctx context.Context) error {
 
 	server := &http.Server{
-		Addr:    s.cfg.Host,
-		Handler: s.router,
+		Addr:              s.cfg.Host,
+		Handler:           s.router,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    16 << 10,
 		BaseContext: func(_ net.Listener) context.Context {
 			return ctx
 		},
@@ -133,18 +139,6 @@ func (s *Server) Start(ctx context.Context) error {
 	err := server.ListenAndServe()
 
 	return err
-}
-
-func (s *Server) corsMiddleware(next http.Handler, cfg *config.CorsConfig) http.Handler {
-	if !cfg.Allowed {
-		return next
-	}
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Access-Control-Allow-Origin", cfg.Host)
-		next.ServeHTTP(w, r)
-	})
 }
 
 func authLogMiddleware(next http.Handler) http.Handler {
@@ -169,10 +163,8 @@ func authLogMiddleware(next http.Handler) http.Handler {
 			wrapped.Status(),
 			"URL",
 			r.Method+" "+r.URL.Path,
-			"Authorization",
-			r.Header.Get("Authorization"),
-			"Sec-WebSocket-Protocol",
-			r.Header.Get("Sec-WebSocket-Protocol"),
+			"Remote",
+			r.RemoteAddr,
 		)
 	})
 }

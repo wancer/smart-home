@@ -74,9 +74,9 @@ func Build(cfg *config.Config) (*Container, error) {
 	ws := web.NewWebSocketServer()
 	ws.Subscribe(dispatcher, states)
 
-	tokenAuth := jwtauth.New("HS256", []byte(cfg.Web.Jwt.Secret), nil)
+	tokenAuth := web.NewTokenAuth([]byte(cfg.Web.Jwt.Secret))
 
-	authCtl := web.NewAuthController(cfg.Web.Oauth, tokenAuth)
+	authCtl := web.NewAuthController(cfg.Web.Oauth, tokenAuth, cfg.Web.Jwt.TTL)
 	sensorsCtl := web.NewSensorsController(db, storage, states)
 	dailyCtl := web.NewSensorsDailyController(db, states)
 	configurableCtl := web.NewSensorsConfigurableController(db, states, storage)
