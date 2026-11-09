@@ -10,14 +10,30 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	privateauth "github.com/wancer/go-private-auth"
 )
 
-func newTestServer(t *testing.T) (*httptest.Server, *Server) {
+func newTestAuth(t *testing.T, ttl time.Duration) *privateauth.Auth {
 	t.Helper()
-	ja := NewTokenAuth(testSecret)
+	a, err := privateauth.New(privateauth.Config{
+		Issuer:         "smart-home",
+		Audience:       "smart-home-web",
+		Secret:         "0123456789abcdef0123456789abcdef-test",
+		TTL:            ttl,
+		GoogleClientID: "cid",
+		Allowed:        []privateauth.User{{Sub: "sub-1", Email: "me@example.com"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
+}
+
+func newTestServer(t *testing.T, auth *privateauth.Auth) (*httptest.Server, *Server) {
+	t.Helper()
 	// Controllers are unused by these tests; nil receivers are fine for routing.
-	srv := NewWebServer(&config.WebConfig{Cors: &config.CorsConfig{}}, ja, NewWebSocketServer(),
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	srv := NewWebServer(&config.WebConfig{Cors: &config.CorsConfig{}}, auth, NewWebSocketServer(),
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	hs := httptest.NewServer(srv.router)
 	t.Cleanup(hs.Close)
 	return hs, srv
@@ -28,7 +44,7 @@ func wsURL(hs *httptest.Server, token string) string {
 }
 
 func TestWebSocketRejectsBadToken(t *testing.T) {
-	hs, _ := newTestServer(t)
+	hs, _ := newTestServer(t, newTestAuth(t, time.Hour))
 	_, resp, err := websocket.DefaultDialer.Dial(wsURL(hs, "garbage"), nil)
 	if err == nil {
 		t.Fatal("expected dial to fail")
@@ -39,8 +55,9 @@ func TestWebSocketRejectsBadToken(t *testing.T) {
 }
 
 func TestWebSocketClosesOnTokenExpiry(t *testing.T) {
-	hs, _ := newTestServer(t)
-	token, err := IssueToken(NewTokenAuth(testSecret), "sub-1", 2*time.Second, time.Now())
+	auth := newTestAuth(t, 2*time.Second)
+	hs, _ := newTestServer(t, auth)
+	token, _, err := auth.IssueForFirstUser()
 	if err != nil {
 		t.Fatal(err)
 	}

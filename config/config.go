@@ -3,10 +3,12 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	envconfig "github.com/caarlos0/env/v11"
 	"github.com/joho/godotenv"
+	privateauth "github.com/wancer/go-private-auth"
 )
 
 type CorsConfig struct {
@@ -16,20 +18,14 @@ type CorsConfig struct {
 
 type JwtConfig struct {
 	Secret string        `env:"SECRET,required"`
-	TTL    time.Duration `env:"TTL" envDefault:"1h"`
+	TTL    time.Duration `env:"TTL,required,notEmpty"` // e.g. 720h; max 30 days
 }
-
-const (
-	MinJwtSecretLen = 32
-	DefaultJwtTTL   = time.Hour
-	MaxJwtTTL       = 256 * time.Hour
-)
 
 type GoogleOauth struct {
 	ClientID string `env:"CLIENT_ID,required"`
-	// AllowedSubs is the primary whitelist (Google's stable account ID).
-	AllowedSubs []string `env:"ALLOWED_SUBS,required" envSeparator:","`
-	// AllowedEmails is a second check: the token's email must also be listed.
+	// AllowedSubs and AllowedEmails are parallel lists: AllowedSubs[i] is the
+	// Google account ID ("sub") of the account whose email is AllowedEmails[i].
+	AllowedSubs   []string `env:"ALLOWED_SUBS,required" envSeparator:","`
 	AllowedEmails []string `env:"ALLOWED_EMAILS,required" envSeparator:","`
 }
 
@@ -72,7 +68,11 @@ type TelegramConfig struct {
 }
 
 func Load() (*Config, error) {
-	_ = godotenv.Load("../.env") // ignore error if no .env (prod)
+	if envFile := os.Getenv("ENVFILE"); envFile != "" {
+		if err := godotenv.Load(envFile); err != nil {
+			return nil, fmt.Errorf("invalid .env file: %w", err)
+		}
+	}
 
 	var config Config
 	if err := envconfig.Parse(&config); err != nil {
@@ -90,18 +90,27 @@ func Load() (*Config, error) {
 	return &config, nil
 }
 
+// validate checks the auth config with the shared library's rules.
 func (c *WebConfig) validate() error {
-	if len(c.Jwt.Secret) < MinJwtSecretLen {
-		return fmt.Errorf("WEB_JWT_SECRET must be at least %d bytes (generate with: openssl rand -base64 48)", MinJwtSecretLen)
+	authCfg, err := c.AuthConfig()
+	if err != nil {
+		return err
 	}
-	if c.Jwt.TTL <= 0 || c.Jwt.TTL > MaxJwtTTL {
-		return fmt.Errorf("WEB_JWT_TTL must be between 0 and 24h, got %s", c.Jwt.TTL)
+	return authCfg.Validate()
+}
+
+// AuthConfig maps this service's config onto the shared auth library.
+func (c *WebConfig) AuthConfig() (privateauth.Config, error) {
+	users, err := privateauth.PairUsers(c.Oauth.AllowedSubs, c.Oauth.AllowedEmails)
+	if err != nil {
+		return privateauth.Config{}, fmt.Errorf("WEB_OAUTH_ALLOWED_SUBS / WEB_OAUTH_ALLOWED_EMAILS: %w", err)
 	}
-	if len(c.Oauth.AllowedSubs) == 0 {
-		return fmt.Errorf("WEB_OAUTH_ALLOWED_SUBS must list at least one Google account sub")
-	}
-	if len(c.Oauth.AllowedEmails) == 0 {
-		return fmt.Errorf("WEB_OAUTH_ALLOWED_EMAILS must list at least one email")
-	}
-	return nil
+	return privateauth.Config{
+		Issuer:         "smart-home",
+		Audience:       "smart-home-web",
+		Secret:         c.Jwt.Secret,
+		TTL:            c.Jwt.TTL,
+		GoogleClientID: c.Oauth.ClientID,
+		Allowed:        users,
+	}, nil
 }

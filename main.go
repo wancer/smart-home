@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"smart-home/config"
 	"smart-home/container"
-	"smart-home/web"
 	"syscall"
 	"time"
 
@@ -76,11 +75,11 @@ func main() {
 				Name: "get-auth",
 				Action: func(_ context.Context, _ *cli.Command) error {
 					// Same claims and expiry as a real login, for the first whitelisted sub.
-					tokenString, err := web.IssueToken(container.Auth, cfg.Web.Oauth.AllowedSubs[0], cfg.Web.Jwt.TTL, time.Now())
+					tokenString, exp, err := container.Auth.IssueForFirstUser()
 					if err != nil {
 						return err
 					}
-					fmt.Printf("DEBUG: a sample jwt (valid %s) is %s\n\n", cfg.Web.Jwt.TTL, tokenString)
+					fmt.Printf("DEBUG: a sample jwt (expires %s) is %s\n\n", exp.Format(time.RFC3339), tokenString)
 					return nil
 				},
 			},

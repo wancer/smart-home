@@ -11,7 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/go-chi/jwtauth/v5"
+	privateauth "github.com/wancer/go-private-auth"
 )
 
 type Server struct {
@@ -22,7 +22,7 @@ type Server struct {
 
 func NewWebServer(
 	cfg *config.WebConfig,
-	tokenAuth *jwtauth.JWTAuth,
+	auth *privateauth.Auth,
 	ws *WebSocketServer,
 	sensors *SensorsController,
 	daily *SensorsDailyController,
@@ -34,7 +34,6 @@ func NewWebServer(
 	ir *IrController,
 	irRules *IrRulesController,
 	notifications *NotificationsController,
-	auth *AuthController,
 ) *Server {
 	r := chi.NewMux()
 
@@ -50,13 +49,9 @@ func NewWebServer(
 
 	// Protected classic routes
 	r.Group(func(r chi.Router) {
-		verifier := func(ja *jwtauth.JWTAuth) func(http.Handler) http.Handler {
-			return jwtauth.Verify(ja, jwtauth.TokenFromHeader)
-		}(tokenAuth)
 		// Auth
 		r.Use(authLogMiddleware)
-		r.Use(verifier)
-		r.Use(jwtauth.Authenticator(tokenAuth))
+		r.Use(auth.RequireHeader())
 
 		// Routing
 		r.Get("/api/sensors", sensors.GetMulti)
@@ -93,19 +88,15 @@ func NewWebServer(
 		r.Put("/api/devices/{deviceId}", devices.Update)
 		r.Delete("/api/devices/{deviceId}", devices.Delete)
 		r.Delete("/api/devices/{deviceId}/sensors", devices.WipeSensorData)
-		r.Get("/api/auth/verify", auth.Verify)
+		r.Get("/api/auth/verify", auth.VerifyHandler)
+		r.Post("/api/auth/refresh", auth.RefreshHandler)
 	})
 
 	// Protected WS route
 	r.Group(func(r chi.Router) {
-		verifier := func(ja *jwtauth.JWTAuth) func(http.Handler) http.Handler {
-			return jwtauth.Verify(ja, jwtauth.TokenFromQuery)
-		}(tokenAuth)
-
-		// Auth
+		// Auth: browsers can't set headers on WebSockets, so the JWT is in ?jwt=
 		r.Use(authLogMiddleware)
-		r.Use(verifier)
-		r.Use(jwtauth.Authenticator(tokenAuth))
+		r.Use(auth.RequireQuery())
 
 		// Routing
 		r.Get("/api/ws", ws.handleConnections)
@@ -113,7 +104,7 @@ func NewWebServer(
 
 	// Public routes
 	// Routing
-	r.Post("/api/auth/login", auth.Login)
+	r.Method(http.MethodPost, "/api/auth/login", auth.LoginHandler()) // rate limited
 
 	return &Server{
 		cfg:    cfg,

@@ -10,7 +10,7 @@ import (
 	"smart-home/web"
 
 	driver "github.com/eclipse/paho.mqtt.golang"
-	"github.com/go-chi/jwtauth/v5"
+	privateauth "github.com/wancer/go-private-auth"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -26,7 +26,7 @@ type Container struct {
 	Web           *web.Server
 	Storage       *internal.Storage
 	EventHandler  *mqtt.EventParser
-	Auth          *jwtauth.JWTAuth
+	Auth          *privateauth.Auth
 }
 
 func Build(cfg *config.Config) (*Container, error) {
@@ -74,9 +74,15 @@ func Build(cfg *config.Config) (*Container, error) {
 	ws := web.NewWebSocketServer()
 	ws.Subscribe(dispatcher, states)
 
-	tokenAuth := web.NewTokenAuth([]byte(cfg.Web.Jwt.Secret))
+	authCfg, err := cfg.Web.AuthConfig()
+	if err != nil {
+		return nil, err
+	}
+	auth, err := privateauth.New(authCfg)
+	if err != nil {
+		return nil, err
+	}
 
-	authCtl := web.NewAuthController(cfg.Web.Oauth, tokenAuth, cfg.Web.Jwt.TTL)
 	sensorsCtl := web.NewSensorsController(db, storage, states)
 	dailyCtl := web.NewSensorsDailyController(db, states)
 	configurableCtl := web.NewSensorsConfigurableController(db, states, storage)
@@ -90,7 +96,7 @@ func Build(cfg *config.Config) (*Container, error) {
 
 	webServer := web.NewWebServer(
 		cfg.Web,
-		tokenAuth,
+		auth,
 		ws,
 		sensorsCtl,
 		dailyCtl,
@@ -102,7 +108,6 @@ func Build(cfg *config.Config) (*Container, error) {
 		irCtl,
 		irRulesCtl,
 		notificationsCtl,
-		authCtl,
 	)
 
 	c := Container{
@@ -116,7 +121,7 @@ func Build(cfg *config.Config) (*Container, error) {
 		Web:           webServer,
 		Storage:       storage,
 
-		Auth: tokenAuth,
+		Auth: auth,
 	}
 
 	return &c, nil
