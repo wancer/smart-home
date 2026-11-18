@@ -18,11 +18,15 @@ func NewPublisher(client driver.Client) *Publisher {
 
 func (p *Publisher) PublishStates(device *model.Device) {
 	if device.SensorType == model.SensorTypeIR {
-		return // nothing to poll: no power, no sensors
+		// no power; poll the chip temperature and TelePeriod, which sets the telemetry timeout
+		p.GetTelePeriod(device)
+		p.GetSensors(device)
+		return
 	}
 
 	p.GetOnOff(device)
 	p.GetSensors(device)
+	p.GetTelePeriod(device) // sets the automatic offline timeout
 }
 
 func (p *Publisher) GetOnOff(device *model.Device) {
@@ -42,6 +46,11 @@ func (p *Publisher) OnOff(device *model.Device, state bool) {
 
 func (p *Publisher) GetSensors(device *model.Device) {
 	p.publish(device.Topic, "STATUS10", "10")
+}
+
+// GetStatus returns the same payload as tele/STATE (uptime, load average, ...), wrapped in StatusSTS.
+func (p *Publisher) GetStatus(device *model.Device) {
+	p.publish(device.Topic, "STATUS11", "11")
 }
 
 func (p *Publisher) GetFirmware(device *model.Device) {
@@ -135,8 +144,52 @@ func (p *Publisher) GetLedPower(device *model.Device) {
 	p.publish(device.Topic, "LedPower", "")
 }
 
+func (p *Publisher) SetLedPower(device *model.Device, state bool) {
+	value := "OFF"
+	if state {
+		value = "ON"
+	}
+	p.publish(device.Topic, "LedPower", value)
+}
+
 func (p *Publisher) GetLedState(device *model.Device) {
 	p.publish(device.Topic, "LedState", "")
+}
+
+func (p *Publisher) SetLedState(device *model.Device, value int) {
+	p.publish(device.Topic, "LedState", fmt.Sprintf("%d", value))
+}
+
+// GetTemplate asks for the GPIO template, which tells which LEDs / lights the device has.
+func (p *Publisher) GetTemplate(device *model.Device) {
+	p.publish(device.Topic, "Template", "")
+}
+
+// GetLight asks for the light state (power, dimmer, HSB colour) in one reply.
+func (p *Publisher) GetLight(device *model.Device, rgb bool) {
+	if rgb {
+		p.publish(device.Topic, "HSBColor", "")
+	} else {
+		p.publish(device.Topic, "Dimmer", "")
+	}
+}
+
+// SetLightPower switches the light, which is POWER<index> (after the relays).
+func (p *Publisher) SetLightPower(device *model.Device, index int, state bool) {
+	value := "OFF"
+	if state {
+		value = "ON"
+	}
+	p.publish(device.Topic, fmt.Sprintf("POWER%d", index), value)
+}
+
+func (p *Publisher) SetDimmer(device *model.Device, value int) {
+	p.publish(device.Topic, "Dimmer", fmt.Sprintf("%d", value))
+}
+
+// SetHueSat changes the colour, keeping the brightness (dimmer).
+func (p *Publisher) SetHueSat(device *model.Device, hue, sat uint) {
+	p.publish(device.Topic, "Backlog", fmt.Sprintf("HSBColor1 %d; HSBColor2 %d", hue, sat))
 }
 
 func (p *Publisher) GetTelePeriod(device *model.Device) {

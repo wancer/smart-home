@@ -15,15 +15,15 @@ func (h *EventHandler) InternalHandleOffline(e *event.InternalOfflineEvent) {
 	state.Voltage = nil
 	state.Power = nil
 
-	state.On = nil
-	state.Current = nil
-	state.Voltage = nil
-	state.Power = nil
-
 	state.CO2 = nil
 	state.Temperature = nil
 	state.Humidity = nil
 	state.DewPoint = nil
+
+	state.ChipTemperature = nil
+	state.LastTelemetry = nil
+	state.Uptime = nil
+	state.LoadAvg = nil
 
 	h.dispatcher.Dispatch(&event.DeviceAvailability{DeviceId: e.DeviceId, Online: false})
 }

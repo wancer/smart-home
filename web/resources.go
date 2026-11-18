@@ -20,6 +20,8 @@ type SensorEvent struct {
 	CO2Dioxide  *uint    `json:"co2"`
 	Temperature *float32 `json:"temperature"`
 	Humidity    *float32 `json:"humidity"`
+
+	ChipTemperature *float32 `json:"chipTemperature"`
 }
 
 func NewSensorFromEvent(e *event.SensorEvent, d *model.Device) *SensorEvent {
@@ -27,6 +29,8 @@ func NewSensorFromEvent(e *event.SensorEvent, d *model.Device) *SensorEvent {
 		DeviceId:   d.ID,
 		Time:       time.Now().Unix(),
 		DeviceTime: time.Time(e.Time).Format(time.DateTime),
+
+		ChipTemperature: e.ChipTemperature(),
 	}
 
 	switch d.SensorType {
@@ -54,6 +58,8 @@ func NewSensorEvent(dbRecord *model.SensorEvent, d *model.Device) *SensorEvent {
 	normalized := &SensorEvent{
 		DeviceId: dbRecord.DeviceId,
 		Time:     dbRecord.RealTime.Unix(),
+
+		ChipTemperature: dbRecord.ChipTemperature,
 	}
 
 	switch d.SensorType {
@@ -81,6 +87,8 @@ func NewSensorEventFromAggregate(agg *model.SensorAggregate, d *model.Device) *S
 	normalized := &SensorEvent{
 		DeviceId: agg.DeviceId,
 		Time:     agg.BucketTime.Unix(),
+
+		ChipTemperature: agg.ChipTemperatureAvg,
 	}
 
 	switch d.SensorType {
@@ -121,6 +129,9 @@ func NewDeviceResponse(state *internal.DeviceState) *DeviceResponse {
 		Enabled:        state.Device.Enabled,
 		SensorType:     state.Device.SensorType,
 		SupportsToggle: state.Device.SupportsToggle,
+		StoreChipTemp:  state.Device.StoreChipTemp,
+		OfflineTimeout: state.Device.OfflineTimeout,
+		StorageTiers:   state.Device.Tiers(),
 		State: &DeviceState{
 			On: state.On,
 
@@ -131,6 +142,8 @@ func NewDeviceResponse(state *internal.DeviceState) *DeviceResponse {
 			CO2:         state.CO2,
 			Temperature: state.Temperature,
 			Humidity:    state.Humidity,
+
+			ChipTemperature: state.ChipTemperature,
 		},
 	}
 }
@@ -146,6 +159,8 @@ type DeviceState struct {
 	CO2         *uint    `json:"co2"`
 	Temperature *float32 `json:"temperature"`
 	Humidity    *float32 `json:"humidity"`
+
+	ChipTemperature *float32 `json:"chipTemperature"`
 }
 
 type DeviceResponse struct {
@@ -155,7 +170,11 @@ type DeviceResponse struct {
 	Enabled        bool         `json:"enabled"`
 	SensorType     string       `json:"sensorType"`
 	SupportsToggle bool         `json:"supportsToggle"`
-	State          *DeviceState `json:"state"`
+	StoreChipTemp  bool         `json:"storeChipTemp"`
+	OfflineTimeout uint         `json:"offlineTimeout"` // seconds, 0 = auto
+	// StorageTiers is the effective sensor data retention (the default when not set).
+	StorageTiers []model.StorageTier `json:"storageTiers"`
+	State        *DeviceState        `json:"state"`
 
 	// SensorHistory is only filled in the device list.
 	SensorHistory *SensorHistorySize `json:"sensorHistory,omitempty"`
@@ -173,17 +192,33 @@ type WsStateEvent struct {
 	On *bool `json:"on"`
 }
 
+// DeviceSensorEvent is one chart point. Min/max are nil for data stored before they were
+// tracked.
 type DeviceSensorEvent struct {
 	Time int64 `json:"time"`
 
 	PowerConsumed *float32 `json:"powerConsumed"`
 	PowerAvg      *uint    `json:"powerAvg"`
+	PowerMin      *uint    `json:"powerMin"`
+	PowerMax      *uint    `json:"powerMax"`
 	CurrentAvg    *float32 `json:"currentAvg"`
+	CurrentMin    *float32 `json:"currentMin"`
+	CurrentMax    *float32 `json:"currentMax"`
 	VoltageAvg    *uint    `json:"voltageAvg"`
+	VoltageMin    *uint    `json:"voltageMin"`
+	VoltageMax    *uint    `json:"voltageMax"`
 
 	CO2Avg         *uint    `json:"co2Avg"`
+	CO2Min         *uint    `json:"co2Min"`
+	CO2Max         *uint    `json:"co2Max"`
 	TemperatureAvg *float32 `json:"temperatureAvg"`
+	TemperatureMin *float32 `json:"temperatureMin"`
+	TemperatureMax *float32 `json:"temperatureMax"`
 	HumidityAvg    *float32 `json:"humidityAvg"`
+	HumidityMin    *float32 `json:"humidityMin"`
+	HumidityMax    *float32 `json:"humidityMax"`
+
+	ChipTemperatureAvg *float32 `json:"chipTemperatureAvg"`
 }
 
 type DeviceSensorDailyEvent struct {
@@ -219,6 +254,12 @@ type LedConfig struct {
 	LedPwmMode *bool `json:"ledPwmMode"`
 	LedPwmOff  *uint `json:"ledPwmOff"`
 	LedPwmOn   *uint `json:"ledPwmOn"`
+
+	StatusLed  bool    `json:"statusLed"`  // has a status LED (Led/LedLink GPIO), or the template is unknown
+	Light      *string `json:"light"`      // "rgb" (WS2812 / 3+ PWM), "dimmer" (1-2 PWM) or null
+	LightPower *bool   `json:"lightPower"`
+	Dimmer     *uint   `json:"dimmer"` // 0..100
+	Color      *string `json:"color"`  // "#rrggbb" at full brightness
 }
 
 type RuleConfig struct {
@@ -229,13 +270,17 @@ type RuleConfig struct {
 }
 
 type TimingConfig struct {
-	TelePeriod *uint   `json:"telePeriod"`
-	Timezone   *string `json:"timezone"`
+	TelePeriod     *uint   `json:"telePeriod"`
+	Timezone       *string `json:"timezone"`
+	UptimeSec      *uint64 `json:"uptimeSec"`      // nil until the device reports it (tele/STATE, STATUS11)
+	OfflineTimeout uint    `json:"offlineTimeout"` // effective, seconds
 }
 
 type HardwareConfig struct {
-	Hardware *string        `json:"hardware"`
-	Firmware FirmwareConfig `json:"firmware"`
+	Hardware        *string        `json:"hardware"`
+	ChipTemperature *float32       `json:"chipTemperature"` // ESP32 only, with SetOption146 1
+	LoadAvg         *uint          `json:"loadAvg"`         // Tasmota LoadAvg, %
+	Firmware        FirmwareConfig `json:"firmware"`
 }
 
 type DeviceConfig struct {

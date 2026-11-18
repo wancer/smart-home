@@ -10,6 +10,7 @@ import (
 
 func (h *EventHandler) HandleState(state *internal.DeviceState, e *event.Status10) {
 	now := time.Now()
+	state.ChipTemperature = e.StatusSNS.ChipTemperature()
 
 	switch state.Device.SensorType {
 	case model.SensorTypeEnergy:

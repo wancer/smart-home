@@ -68,6 +68,30 @@ func (c *EventParser) parseState(_ driver.Client, msg driver.Message) {
 	c.dispatcher.DispatchMqqt(&parsed, msg.Topic())
 }
 
+// parseTeleState handles the periodic tele/<topic>/STATE message.
+func (c *EventParser) parseTeleState(_ driver.Client, msg driver.Message) {
+	var parsed event.TeleState
+	if err := json.Unmarshal(msg.Payload(), &parsed); err != nil {
+		slog.Error("CANT_PARSE_MSG", "err", err, "topic", msg.Topic(), "payload", string(msg.Payload()))
+		return
+	}
+
+	slog.Debug("[event] tele state", "event", string(msg.Payload()))
+	c.dispatcher.DispatchMqqt(&parsed, msg.Topic())
+}
+
+// parseStatus11 handles the STATUS11 reply: the tele/STATE payload wrapped in StatusSTS.
+func (c *EventParser) parseStatus11(_ driver.Client, msg driver.Message) {
+	var parsed event.Status11
+	if err := json.Unmarshal(msg.Payload(), &parsed); err != nil || parsed.StatusSTS == nil {
+		slog.Error("CANT_PARSE_MSG", "err", err, "topic", msg.Topic(), "payload", string(msg.Payload()))
+		return
+	}
+
+	slog.Debug("[event] status11", "event", string(msg.Payload()))
+	c.dispatcher.DispatchMqqt(parsed.StatusSTS, msg.Topic())
+}
+
 func (c *EventParser) parseFirmware(_ driver.Client, msg driver.Message) {
 	var parsed event.Status2
 	err := json.Unmarshal(msg.Payload(), &parsed)
@@ -110,6 +134,17 @@ func (c *EventParser) parseResult(_ driver.Client, msg driver.Message) {
 	keys := slices.Collect(maps.Keys(rawMapped))
 	if len(keys) == 0 {
 		slog.Error("EMPTY_RESULT_KEYS", "err", err, "topic", msg.Topic(), "payload", msg.Payload())
+		return
+	}
+
+	// Multi-key replies: check these before picking a single key
+	if gpio, ok := rawMapped["GPIO"].([]any); ok {
+		e := event.NewTemplate(gpio)
+		c.dispatcher.DispatchMqqt(&e, msg.Topic())
+		return
+	}
+	if light, ok := event.NewLight(rawMapped); ok {
+		c.dispatcher.DispatchMqqt(light, msg.Topic())
 		return
 	}
 

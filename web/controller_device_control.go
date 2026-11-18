@@ -93,16 +93,10 @@ func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
 
 	cfg := DeviceConfig{
 		TelePeriod: state.Config.TelePeriod,
-		LedConfig: LedConfig{
-			LedState:   state.Config.LedState,
-			LedPower:   state.Config.LedPower,
-			LedPwmOn:   state.Config.LedPwmOn,
-			LedPwmOff:  state.Config.LedPwmOff,
-			LedPwmMode: state.Config.LedPwmMode,
-		},
-		Timezone: c.resolveTimezone(state),
-		Firmware: NewFirmwareConfig(state.Firmware, c.firmware.Latest()),
-		Hardware: state.Hardware,
+		LedConfig:  newLedConfig(state),
+		Timezone:   c.resolveTimezone(state),
+		Firmware:   NewFirmwareConfig(state.Firmware, c.firmware.Latest()),
+		Hardware:   state.Hardware,
 	}
 
 	slog.Info("[device][control-get] success")
@@ -122,21 +116,24 @@ func (c *DeviceControlController) GetLed(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	c.pub.GetLedPower(state.Device)
-	c.pub.GetLedState(state.Device)
-	c.pub.GetLedPwmMode(state.Device)
-	c.pub.GetLedPwmOn(state.Device)
-	c.pub.GetLedPwmOff(state.Device)
-	time.Sleep(3 * time.Second)
+	// The template says which LEDs / lights the device has; ask for it first.
+	c.pub.GetTemplate(state.Device)
+	time.Sleep(1500 * time.Millisecond)
 
-	cfg := LedConfig{
-		LedState:   state.Config.LedState,
-		LedPower:   state.Config.LedPower,
-		LedPwmOn:   state.Config.LedPwmOn,
-		LedPwmOff:  state.Config.LedPwmOff,
-		LedPwmMode: state.Config.LedPwmMode,
+	hw := state.Config.LedHardware
+	if hw == nil || hw.StatusLed {
+		c.pub.GetLedPower(state.Device)
+		c.pub.GetLedState(state.Device)
+		c.pub.GetLedPwmMode(state.Device)
+		c.pub.GetLedPwmOn(state.Device)
+		c.pub.GetLedPwmOff(state.Device)
 	}
+	if hw != nil && hw.Light != internal.LightNone {
+		c.pub.GetLight(state.Device, hw.Light == internal.LightRGB)
+	}
+	time.Sleep(1500 * time.Millisecond)
 
+	cfg := newLedConfig(state)
 	slog.Info("[device][led-get] success", "deviceId", deviceId)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(cfg)
@@ -158,11 +155,14 @@ func (c *DeviceControlController) GetTiming(w http.ResponseWriter, r *http.Reque
 	c.pub.GetTimezone(state.Device)
 	c.pub.GetTimeStd(state.Device)
 	c.pub.GetTimeDst(state.Device)
+	c.pub.GetStatus(state.Device) // uptime
 	time.Sleep(3 * time.Second)
 
 	cfg := TimingConfig{
-		TelePeriod: state.Config.TelePeriod,
-		Timezone:   c.resolveTimezone(state),
+		TelePeriod:     state.Config.TelePeriod,
+		Timezone:       c.resolveTimezone(state),
+		UptimeSec:      uptime(state),
+		OfflineTimeout: uint(internal.OfflineTimeout(state) / time.Second),
 	}
 
 	slog.Info("[device][timing-get] success", "deviceId", deviceId)
@@ -183,16 +183,27 @@ func (c *DeviceControlController) GetHardware(w http.ResponseWriter, r *http.Req
 	}
 
 	c.pub.GetFirmware(state.Device)
+	c.pub.GetSensors(state.Device) // refreshes the chip temperature
+	c.pub.GetStatus(state.Device)  // load average
 	time.Sleep(3 * time.Second)
 
 	cfg := HardwareConfig{
-		Hardware: state.Hardware,
+		Hardware:        state.Hardware,
+		ChipTemperature: state.ChipTemperature,
+		LoadAvg:         state.LoadAvg,
 		Firmware: NewFirmwareConfig(state.Firmware, c.firmware.Latest()),
 	}
 
 	slog.Info("[device][hardware-get] success", "deviceId", deviceId)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(cfg)
+}
+
+func uptime(state *internal.DeviceState) *uint64 {
+	if state.Uptime == nil {
+		return nil
+	}
+	return new(state.Uptime.Current())
 }
 
 // UpgradeFirmware only triggers the upgrade: the device downloads the image and restarts on its own.
@@ -242,8 +253,8 @@ func (c *DeviceControlController) Do(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if device.Device.SensorType == model.SensorTypeIR {
-		slog.Error("[device][control] unsupported for IR device", "deviceId", parsed.DeviceId)
+	if !supportsParameter(device.Device, parsed.Parameter) {
+		slog.Error("[device][control] unsupported for device", "deviceId", parsed.DeviceId, "sensorType", device.Device.SensorType, "parameter", parsed.Parameter)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
@@ -287,6 +298,14 @@ func (c *DeviceControlController) handle(r *DeviceControlRequest, d *internal.De
 		c.pub.SetTimezone(d.Device, timezone.Offset)
 		c.pub.SetTimeDst(d.Device, timezone.TimeDst)
 		c.pub.SetTimeStd(d.Device, timezone.TimeStd)
+	case "led-power":
+		c.pub.SetLedPower(d.Device, r.Value == "ON")
+	case "led-mode":
+		value, err := strconv.Atoi(r.Value)
+		if err != nil || value < 0 || value > 8 {
+			return fmt.Errorf("invalid led mode: %s", r.Value)
+		}
+		c.pub.SetLedState(d.Device, value)
 	case "led-pwm-mode":
 		c.pub.SetLedPwmMode(d.Device, r.Value == "ON")
 	case "led-pwm-off":
@@ -294,13 +313,27 @@ func (c *DeviceControlController) handle(r *DeviceControlRequest, d *internal.De
 		if err != nil {
 			return err
 		}
-		c.pub.SetLedPwmOn(d.Device, value)
+		c.pub.SetLedPwmOff(d.Device, value)
 	case "led-pwm-on":
 		value, err := strconv.Atoi(r.Value)
 		if err != nil {
 			return err
 		}
 		c.pub.SetLedPwmOn(d.Device, value)
+	case "light-power":
+		c.pub.SetLightPower(d.Device, d.LightPowerIndex(), r.Value == "ON")
+	case "light-dimmer":
+		value, err := strconv.Atoi(r.Value)
+		if err != nil || value < 0 || value > 100 {
+			return fmt.Errorf("invalid dimmer: %s", r.Value)
+		}
+		c.pub.SetDimmer(d.Device, value)
+	case "light-color":
+		hue, sat, err := internal.HexToHueSat(r.Value)
+		if err != nil {
+			return err
+		}
+		c.pub.SetHueSat(d.Device, hue, sat)
 	case "power":
 		power, err := strconv.Atoi(r.Value)
 		if err != nil {
@@ -317,4 +350,38 @@ func (c *DeviceControlController) handle(r *DeviceControlRequest, d *internal.De
 	}
 
 	return nil
+}
+
+// supportsParameter: calibration is for energy plugs only, power control isn't for IR remotes.
+func supportsParameter(device *model.Device, parameter string) bool {
+	switch parameter {
+	case "voltage", "power":
+		return device.SensorType == model.SensorTypeEnergy
+	case "on-off":
+		return device.SensorType != model.SensorTypeIR
+	}
+	return true
+}
+
+func newLedConfig(state *internal.DeviceState) LedConfig {
+	cfg := LedConfig{
+		LedState:   state.Config.LedState,
+		LedPower:   state.Config.LedPower,
+		LedPwmOn:   state.Config.LedPwmOn,
+		LedPwmOff:  state.Config.LedPwmOff,
+		LedPwmMode: state.Config.LedPwmMode,
+		StatusLed:  true, // template unknown: offer the status LED settings as before
+		LightPower: state.Config.LightPower,
+		Dimmer:     state.Config.Dimmer,
+	}
+	if hw := state.Config.LedHardware; hw != nil {
+		cfg.StatusLed = hw.StatusLed
+		if hw.Light != internal.LightNone {
+			cfg.Light = new(hw.Light)
+		}
+	}
+	if state.Config.Hue != nil && state.Config.Saturation != nil {
+		cfg.Color = new(internal.HueSatToHex(*state.Config.Hue, *state.Config.Saturation))
+	}
+	return cfg
 }

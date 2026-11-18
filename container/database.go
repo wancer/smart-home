@@ -72,7 +72,7 @@ func (init *DatabaseInitializer) dropCO2e() error {
 }
 
 // backfillAggregates populates sensor_aggregate from sensor_event on first run.
-// It groups raw 15-sec records into 5-minute UTC buckets using SQLite's datetime()
+// It groups raw 15-sec records into 5-minute UTC buckets (bucket_seconds defaults to 300) using SQLite's datetime()
 // so that mixed +00:00/+03:00 offsets in historical data are normalised correctly.
 func (init *DatabaseInitializer) backfillAggregates() error {
 	var aggCount int64
@@ -96,9 +96,13 @@ func (init *DatabaseInitializer) backfillAggregates() error {
 	sql := `
 INSERT INTO sensor_aggregate
     (device_id, bucket_time, count,
-     power_consumed, power_avg, current_avg, voltage_avg,
-     co2_avg,
-     temperature_avg, humidity_avg, dew_point_avg)
+     power_consumed, power_avg, power_min, power_max,
+     current_avg, current_min, current_max,
+     voltage_avg, voltage_min, voltage_max,
+     co2_avg, co2_min, co2_max,
+     temperature_avg, temperature_min, temperature_max,
+     humidity_avg, humidity_min, humidity_max,
+     dew_point_avg)
 SELECT
     device_id,
     datetime(
@@ -107,12 +111,12 @@ SELECT
     ) AS bucket_time,
     COUNT(*)                                              AS count,
     SUM(CAST(power    AS REAL) * 15.0 / 3600.0)         AS power_consumed,
-    AVG(power)                                            AS power_avg,
-    AVG(current)                                          AS current_avg,
-    AVG(voltage)                                          AS voltage_avg,
-    AVG(co2)                                              AS co2_avg,
-    AVG(temperature)                                      AS temperature_avg,
-    AVG(humidity)                                         AS humidity_avg,
+    AVG(power), MIN(power), MAX(power),
+    AVG(current), MIN(current), MAX(current),
+    AVG(voltage), MIN(voltage), MAX(voltage),
+    AVG(co2), MIN(co2), MAX(co2),
+    AVG(temperature), MIN(temperature), MAX(temperature),
+    AVG(humidity), MIN(humidity), MAX(humidity),
     AVG(dew_point)                                        AS dew_point_avg
 FROM sensor_event
 GROUP BY device_id, bucket_time

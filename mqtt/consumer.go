@@ -30,10 +30,12 @@ func NewMqttConsumer(
 			"tele/%s/SENSOR":   parser.parseSensorEvent,
 			"tele/%s/LWT":      parser.parseLwt,
 			"tele/%s/RESULT":   parser.parseTeleResult,
+			"tele/%s/STATE":    parser.parseTeleState,
 			"stat/%s/POWER":    parser.parsePowerEvent,
 			"stat/%s/RESULT":   parser.parseResult,
 			"stat/%s/STATUS2":  parser.parseFirmware,
 			"stat/%s/STATUS10": parser.parseState,
+			"stat/%s/STATUS11": parser.parseStatus11,
 
 			"stat/%s/STATUS":  parser.parseAsWarning,
 			"stat/%s/STATUS0": parser.parseAsWarning,

@@ -43,8 +43,15 @@ type DeviceConfig struct {
 	LedPwmMode *bool
 	LedPwmOff  *uint
 	LedPwmOn   *uint
-	Timers     [16]*TimerConfig
-	Rules      [3]*RuleConfig
+
+	LedHardware *LedHardware // from the GPIO template; nil until the Template reply arrives
+	LightPower  *bool
+	Dimmer      *uint // 0..100
+	Hue         *uint // 0..360
+	Saturation  *uint // 0..100
+
+	Timers [16]*TimerConfig
+	Rules  [3]*RuleConfig
 }
 
 type DeviceFirmware struct {
@@ -71,6 +78,22 @@ type DeviceState struct {
 	Temperature *float32
 	Humidity    *float32
 	DewPoint    *float32
+
+	ChipTemperature *float32   // ESP32 internal temperature (SetOption146 1)
+	LastTelemetry   *time.Time // last tele/SENSOR message; IR availability falls back to LWT while nil
+
+	Uptime  *DeviceUptime // from tele/STATE or STATUS11
+	LoadAvg *uint         // Tasmota main loop load, %
+}
+
+type DeviceUptime struct {
+	Seconds uint64    // device uptime when reported
+	At      time.Time // when it was reported
+}
+
+// Current extrapolates the reported uptime to now.
+func (u *DeviceUptime) Current() uint64 {
+	return u.Seconds + uint64(max(0, time.Since(u.At)/time.Second))
 }
 
 type DeviceStateManager struct {

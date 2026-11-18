@@ -52,11 +52,15 @@ func (c *SensorsController) GetMulti(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(deviceIds) > 0 {
-		now := time.Now()
-		// Query the two most recent 5-min buckets from the aggregate table
+		// The last 10 minutes of stored data; with coarse first-tier buckets, at least the
+		// latest finished bucket of each device.
+		window := 10 * time.Minute
+		for _, state := range states {
+			window = max(window, 2*state.Device.Tiers()[0].StepDuration())
+		}
 		dbAggs, err := gorm.G[model.SensorAggregate](c.db).
 			Where("device_id IN ?", deviceIds).
-			Where("datetime(bucket_time) > datetime(?)", now.Add(-10*time.Minute).UTC().Format(time.DateTime)).
+			Where("datetime(bucket_time) > datetime(?)", time.Now().Add(-window).UTC().Format(time.DateTime)).
 			Order("bucket_time ASC").
 			Find(r.Context())
 		if err != nil {

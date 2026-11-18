@@ -17,12 +17,32 @@ type DeviceUpsertRequest struct {
 	Enabled        bool   `json:"enabled"`
 	SensorType     string `json:"sensorType"`
 	SupportsToggle bool   `json:"supportsToggle"`
+	StoreChipTemp  bool   `json:"storeChipTemp"`
+	OfflineTimeout uint   `json:"offlineTimeout"` // seconds, 0 = auto
+	// StorageTiers is the sensor data retention: [] = the default; omitted = the default
+	// on create, unchanged on update.
+	StorageTiers *[]model.StorageTier `json:"storageTiers"`
 }
 
-func (c *DevicesController) Create(w http.ResponseWriter, r *http.Request) {
+// decodeDeviceRequest reads and validates a create/update body, answering 400 itself.
+func decodeDeviceRequest(w http.ResponseWriter, r *http.Request) (*DeviceUpsertRequest, bool) {
 	var req DeviceUpsertRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return nil, false
+	}
+	if req.StorageTiers != nil {
+		if err := model.ValidateStorageTiers(*req.StorageTiers); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return nil, false
+		}
+	}
+	return &req, true
+}
+
+func (c *DevicesController) Create(w http.ResponseWriter, r *http.Request) {
+	req, ok := decodeDeviceRequest(w, r)
+	if !ok {
 		return
 	}
 
@@ -39,6 +59,11 @@ func (c *DevicesController) Create(w http.ResponseWriter, r *http.Request) {
 		// insert replaces false with the column default (true), update doesn't
 		device.Enabled = req.Enabled
 		device.SupportsToggle = req.SupportsToggle && req.SensorType != model.SensorTypeIR
+		device.StoreChipTemp = req.StoreChipTemp
+		device.OfflineTimeout = req.OfflineTimeout
+		if req.StorageTiers != nil {
+			device.StorageTiers = *req.StorageTiers
+		}
 		return tx.Save(device).Error
 	})
 	if err != nil {
@@ -61,9 +86,8 @@ func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req DeviceUpsertRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	req, ok := decodeDeviceRequest(w, r)
+	if !ok {
 		return
 	}
 
@@ -79,6 +103,11 @@ func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
 	device.Enabled = req.Enabled
 	device.SensorType = req.SensorType
 	device.SupportsToggle = req.SupportsToggle && req.SensorType != model.SensorTypeIR
+	device.StoreChipTemp = req.StoreChipTemp
+	device.OfflineTimeout = req.OfflineTimeout
+	if req.StorageTiers != nil {
+		device.StorageTiers = *req.StorageTiers
+	}
 
 	if err := c.db.WithContext(r.Context()).Save(device).Error; err != nil {
 		slog.Error("[device][update] error", "err", err)

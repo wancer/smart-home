@@ -46,9 +46,23 @@ type Co2 struct {
 	DewPoint    float32 `json:"DewPoint"`
 }
 
+// Chip is the ESP32 internal temperature sensor, reported with SetOption146 1.
+type Chip struct {
+	Temperature float32 `json:"Temperature"`
+}
+
 type SensorEvent struct {
 	Time    TasmotaTime   `json:"Time"`
 	Energy  *Energy       `json:"ENERGY"`
 	Co2     *Co2          `json:"SCD40"`
 	TempHum *TempHumidity `json:"SHT4X"`
+	Chip    *Chip         `json:"ESP32"`
+}
+
+// ChipTemperature returns the ESP32 chip temperature, nil if the device doesn't report it.
+func (e *SensorEvent) ChipTemperature() *float32 {
+	if e == nil || e.Chip == nil {
+		return nil
+	}
+	return new(e.Chip.Temperature)
 }

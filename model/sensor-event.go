@@ -21,6 +21,11 @@ type SensorEvent struct {
 	Temperature *float32
 	Humidity    *float32
 	DewPoint    *float32
+
+	// ChipTemperature is only buffered for sensor_aggregate; sensor_event is no longer written.
+	ChipTemperature *float32 `gorm:"-"`
+	// EnergyWh is the energy this power reading stands for (set by Storage.Store).
+	EnergyWh *float32 `gorm:"-"`
 }
 
 func (SensorEvent) TableName() string {
