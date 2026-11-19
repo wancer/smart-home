@@ -161,6 +161,11 @@ func (n *Notifier) onAvailability(e *event.DeviceAvailability) {
 	for _, rule := range n.rules[e.DeviceId] {
 		switch rule.Kind {
 		case model.NotifyOffline:
+			// Only follow up an offline alert that was actually sent.
+			if a := n.alerts[rule.ID]; a != nil && a.firing && rule.NotifyRecovery && wasOffline {
+				n.out.Notify(fmt.Sprintf("%s %s is back online (was offline for %s)",
+					notifierEmojiOnline, state.Device.Name, humanDuration(now.Sub(since))))
+			}
 			delete(n.alerts, rule.ID)
 		case model.NotifyOnline:
 			down := now.Sub(since)
@@ -211,6 +216,8 @@ func (n *Notifier) onSensors(e *event.SensorsUpdated) {
 		return
 	}
 	now := time.Now()
+	// A switched-off relay reads 0 W / 0 A: that is normal, not "below threshold".
+	switchedOff := state.CanToggle() && state.On != nil && !*state.On
 
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -225,8 +232,10 @@ func (n *Notifier) onSensors(e *event.SensorsUpdated) {
 		}
 
 		a := n.alert(rule.ID)
-		holds := (rule.Kind == model.NotifyAbove && value > rule.Threshold) ||
-			(rule.Kind == model.NotifyBelow && value < rule.Threshold)
+		offNormal := switchedOff && relayMetric(rule.Metric)
+		holds := !offNormal &&
+			((rule.Kind == model.NotifyAbove && value > rule.Threshold) ||
+				(rule.Kind == model.NotifyBelow && value < rule.Threshold))
 
 		if holds {
 			a.clearSince = time.Time{}
@@ -259,8 +268,12 @@ func (n *Notifier) onSensors(e *event.SensorsUpdated) {
 		if now.Sub(a.clearSince) >= max(rule.Duration(), minRecovery) {
 			a.firing, a.clearSince = false, time.Time{}
 			if rule.NotifyRecovery {
-				n.out.Notify(fmt.Sprintf("%s %s: %s is back to normal, %s",
-					notifierEmojiOk, state.Device.Name, rule.Metric, formatMetric(rule.Metric, value)))
+				if offNormal {
+					n.out.Notify(fmt.Sprintf("%s %s: switched off", notifierEmojiOk, state.Device.Name))
+				} else {
+					n.out.Notify(fmt.Sprintf("%s %s: %s is back to normal, %s",
+						notifierEmojiOk, state.Device.Name, rule.Metric, formatMetric(rule.Metric, value)))
+				}
 			}
 		}
 	}
@@ -276,6 +289,11 @@ func (n *Notifier) send(rule model.NotifyRule, defaultText string) {
 		}
 	}
 	n.out.Notify(defaultText)
+}
+
+// relayMetric reports whether the metric drops to 0 when the relay is switched off.
+func relayMetric(metric string) bool {
+	return metric == model.MetricPower || metric == model.MetricCurrent
 }
 
 func metricValue(state *internal.DeviceState, metric string) (float64, bool) {

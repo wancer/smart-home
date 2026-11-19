@@ -16,7 +16,11 @@ func NewPublisher(client driver.Client) *Publisher {
 	return &Publisher{client: client}
 }
 
+// PublishStates polls a device that has just come online (or was just subscribed): the
+// profile (template, firmware; the STATUS10 reply detects the sensor type), power and sensors.
 func (p *Publisher) PublishStates(device *model.Device) {
+	p.GetTemplate(device)
+	p.GetFirmware(device)
 	if device.SensorType == model.SensorTypeIR {
 		// no power; poll the chip temperature and TelePeriod, which sets the telemetry timeout
 		p.GetTelePeriod(device)
@@ -160,7 +164,7 @@ func (p *Publisher) SetLedState(device *model.Device, value int) {
 	p.publish(device.Topic, "LedState", fmt.Sprintf("%d", value))
 }
 
-// GetTemplate asks for the GPIO template, which tells which LEDs / lights the device has.
+// GetTemplate asks for the GPIO template: relays, LEDs / lights, IR (stored in the device profile).
 func (p *Publisher) GetTemplate(device *model.Device) {
 	p.publish(device.Topic, "Template", "")
 }

@@ -45,7 +45,7 @@ func NewSensorFromEvent(e *event.SensorEvent, d *model.Device) *SensorEvent {
 	case model.SensorTypeTempHumid:
 		normalized.Temperature = &e.TempHum.Temperature
 		normalized.Humidity = &e.TempHum.Humidity
-	case model.SensorTypeIR:
+	case model.SensorTypeIR, model.SensorTypeOther:
 		// no sensors
 	default:
 		slog.Error("UNKOWN_TYPE: " + d.SensorType)
@@ -74,7 +74,7 @@ func NewSensorEvent(dbRecord *model.SensorEvent, d *model.Device) *SensorEvent {
 	case model.SensorTypeTempHumid:
 		normalized.Temperature = dbRecord.Temperature
 		normalized.Humidity = dbRecord.Humidity
-	case model.SensorTypeIR:
+	case model.SensorTypeIR, model.SensorTypeOther:
 		// no sensors
 	default:
 		slog.Error("UNKOWN_TYPE: " + d.SensorType)
@@ -112,7 +112,7 @@ func NewSensorEventFromAggregate(agg *model.SensorAggregate, d *model.Device) *S
 	case model.SensorTypeTempHumid:
 		normalized.Temperature = agg.TemperatureAvg
 		normalized.Humidity = agg.HumidityAvg
-	case model.SensorTypeIR:
+	case model.SensorTypeIR, model.SensorTypeOther:
 		// no sensors
 	default:
 		slog.Error("UNKOWN_TYPE: " + d.SensorType)
@@ -128,8 +128,8 @@ func NewDeviceResponse(state *internal.DeviceState) *DeviceResponse {
 		Topic:          state.Device.Topic,
 		Enabled:        state.Device.Enabled,
 		SensorType:     state.Device.SensorType,
-		SupportsToggle: state.Device.SupportsToggle,
-		StoreChipTemp:  state.Device.StoreChipTemp,
+		SupportsToggle: state.CanToggle(),
+		Profile:        newDeviceProfile(state),
 		OfflineTimeout: state.Device.OfflineTimeout,
 		StorageTiers:   state.Device.Tiers(),
 		State: &DeviceState{
@@ -168,9 +168,9 @@ type DeviceResponse struct {
 	Name           string       `json:"name"`
 	Topic          string       `json:"topic"`
 	Enabled        bool         `json:"enabled"`
-	SensorType     string       `json:"sensorType"`
-	SupportsToggle bool         `json:"supportsToggle"`
-	StoreChipTemp  bool         `json:"storeChipTemp"`
+	SensorType     string         `json:"sensorType"`     // detected: energy, co2, t-h, ir, other
+	SupportsToggle bool           `json:"supportsToggle"` // has a relay (template), not IR
+	Profile        *DeviceProfile `json:"profile"`
 	OfflineTimeout uint         `json:"offlineTimeout"` // seconds, 0 = auto
 	// StorageTiers is the effective sensor data retention (the default when not set).
 	StorageTiers []model.StorageTier `json:"storageTiers"`
@@ -226,6 +226,63 @@ type DeviceSensorDailyEvent struct {
 	PowerConsumed *float32 `json:"power"`
 }
 
+// DeviceProfile is what the device is (stored), and what the UI can offer for it.
+type DeviceProfile struct {
+	Template        *model.DeviceTemplate `json:"template"` // null until the device replied
+	Chip            *string               `json:"chip"`
+	FirmwareVersion *string               `json:"firmwareVersion"`
+	FirmwareBuiltAt *string               `json:"firmwareBuiltAt"`
+	Sensors         []string              `json:"sensors"`
+	ProfiledAt      *int64                `json:"profiledAt"` // unix time of the last change/refresh
+	Features        DeviceFeatures        `json:"features"`
+}
+
+// DeviceFeatures is derived from the profile; template-based ones are false/null while it's unknown.
+type DeviceFeatures struct {
+	Relays    int     `json:"relays"`
+	StatusLed bool    `json:"statusLed"`
+	Light     *string `json:"light"` // "rgb", "dimmer" or null
+	Ir        bool    `json:"ir"`
+	Energy    bool    `json:"energy"`   // energy meter: calibration
+	ChipTemp  bool    `json:"chipTemp"` // reports the ESP32 internal temperature (stored for 24 h)
+}
+
+func newDeviceProfile(state *internal.DeviceState) *DeviceProfile {
+	d := state.Device
+	p := &DeviceProfile{
+		Template: d.Template,
+		Sensors:  d.Sensors,
+		Features: DeviceFeatures{
+			Ir:       d.SensorType == model.SensorTypeIR,
+			Energy:   d.SensorType == model.SensorTypeEnergy,
+			ChipTemp: state.HasChipTemperature(),
+		},
+	}
+	if p.Sensors == nil {
+		p.Sensors = []string{}
+	}
+	if d.Chip != "" {
+		p.Chip = new(d.Chip)
+	}
+	if d.FirmwareVersion != "" {
+		p.FirmwareVersion = new(d.FirmwareVersion)
+	}
+	if d.FirmwareBuiltAt != nil {
+		p.FirmwareBuiltAt = new(d.FirmwareBuiltAt.Format(time.DateTime))
+	}
+	if d.ProfiledAt != nil {
+		p.ProfiledAt = new(d.ProfiledAt.Unix())
+	}
+	if hw := state.LedHardware(); hw != nil {
+		p.Features.Relays = hw.Relays
+		p.Features.StatusLed = hw.StatusLed
+		if hw.Light != internal.LightNone {
+			p.Features.Light = new(hw.Light)
+		}
+	}
+	return p
+}
+
 type FirmwareConfig struct {
 	Version         *string `json:"version"`
 	BuildAt         *string `json:"buildAt"`
@@ -233,17 +290,16 @@ type FirmwareConfig struct {
 	UpdateAvailable bool    `json:"updateAvailable"`
 }
 
-func NewFirmwareConfig(c *internal.DeviceFirmware, latest *string) FirmwareConfig {
-	firmware := FirmwareConfig{
-		Version:       c.Version,
-		LatestVersion: latest,
+func NewFirmwareConfig(d *model.Device, latest *string) FirmwareConfig {
+	firmware := FirmwareConfig{LatestVersion: latest}
+	if d.FirmwareVersion != "" {
+		firmware.Version = new(d.FirmwareVersion)
+		if latest != nil {
+			firmware.UpdateAvailable = internal.IsFirmwareOutdated(d.FirmwareVersion, *latest)
+		}
 	}
-	if c.Version != nil && latest != nil {
-		firmware.UpdateAvailable = internal.IsFirmwareOutdated(*c.Version, *latest)
-	}
-	if c.BuiltAt != nil {
-		formatted := c.BuiltAt.Format(time.DateTime)
-		firmware.BuildAt = &formatted
+	if d.FirmwareBuiltAt != nil {
+		firmware.BuildAt = new(d.FirmwareBuiltAt.Format(time.DateTime))
 	}
 	return firmware
 }

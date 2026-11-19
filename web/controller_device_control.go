@@ -95,8 +95,8 @@ func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
 		TelePeriod: state.Config.TelePeriod,
 		LedConfig:  newLedConfig(state),
 		Timezone:   c.resolveTimezone(state),
-		Firmware:   NewFirmwareConfig(state.Firmware, c.firmware.Latest()),
-		Hardware:   state.Hardware,
+		Firmware:   NewFirmwareConfig(state.Device, c.firmware.Latest()),
+		Hardware:   chip(state.Device),
 	}
 
 	slog.Info("[device][control-get] success")
@@ -116,11 +116,13 @@ func (c *DeviceControlController) GetLed(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// The template says which LEDs / lights the device has; ask for it first.
-	c.pub.GetTemplate(state.Device)
-	time.Sleep(1500 * time.Millisecond)
+	// The stored template says which LEDs / lights the device has; ask for it if unknown.
+	if state.Device.Template == nil {
+		c.pub.GetTemplate(state.Device)
+		time.Sleep(1500 * time.Millisecond)
+	}
 
-	hw := state.Config.LedHardware
+	hw := state.LedHardware()
 	if hw == nil || hw.StatusLed {
 		c.pub.GetLedPower(state.Device)
 		c.pub.GetLedState(state.Device)
@@ -182,21 +184,28 @@ func (c *DeviceControlController) GetHardware(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	c.pub.GetFirmware(state.Device)
+	// chip and firmware are in the stored profile (POST /profile/refresh re-reads them)
 	c.pub.GetSensors(state.Device) // refreshes the chip temperature
 	c.pub.GetStatus(state.Device)  // load average
 	time.Sleep(3 * time.Second)
 
 	cfg := HardwareConfig{
-		Hardware:        state.Hardware,
+		Hardware:        chip(state.Device),
 		ChipTemperature: state.ChipTemperature,
 		LoadAvg:         state.LoadAvg,
-		Firmware: NewFirmwareConfig(state.Firmware, c.firmware.Latest()),
+		Firmware:        NewFirmwareConfig(state.Device, c.firmware.Latest()),
 	}
 
 	slog.Info("[device][hardware-get] success", "deviceId", deviceId)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(cfg)
+}
+
+func chip(d *model.Device) *string {
+	if d.Chip == "" {
+		return nil
+	}
+	return new(d.Chip)
 }
 
 func uptime(state *internal.DeviceState) *uint64 {
@@ -253,7 +262,7 @@ func (c *DeviceControlController) Do(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !supportsParameter(device.Device, parsed.Parameter) {
+	if !supportsParameter(device, parsed.Parameter) {
 		slog.Error("[device][control] unsupported for device", "deviceId", parsed.DeviceId, "sensorType", device.Device.SensorType, "parameter", parsed.Parameter)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
@@ -352,13 +361,13 @@ func (c *DeviceControlController) handle(r *DeviceControlRequest, d *internal.De
 	return nil
 }
 
-// supportsParameter: calibration is for energy plugs only, power control isn't for IR remotes.
-func supportsParameter(device *model.Device, parameter string) bool {
+// supportsParameter: calibration is for energy plugs only, power control for devices with a relay.
+func supportsParameter(state *internal.DeviceState, parameter string) bool {
 	switch parameter {
 	case "voltage", "power":
-		return device.SensorType == model.SensorTypeEnergy
+		return state.Device.SensorType == model.SensorTypeEnergy
 	case "on-off":
-		return device.SensorType != model.SensorTypeIR
+		return state.CanToggle()
 	}
 	return true
 }
@@ -374,7 +383,7 @@ func newLedConfig(state *internal.DeviceState) LedConfig {
 		LightPower: state.Config.LightPower,
 		Dimmer:     state.Config.Dimmer,
 	}
-	if hw := state.Config.LedHardware; hw != nil {
+	if hw := state.LedHardware(); hw != nil {
 		cfg.StatusLed = hw.StatusLed
 		if hw.Light != internal.LightNone {
 			cfg.Light = new(hw.Light)

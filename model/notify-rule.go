@@ -31,7 +31,7 @@ type NotifyRule struct {
 	Metric         string  `gorm:"size:16"` // above/below only
 	Threshold      float64 // above/below only
 	DurationSec    int     `gorm:"not null;default:0"`
-	NotifyRecovery bool    `gorm:"not null;default:false"` // above/below: also notify when the value is back to normal
+	NotifyRecovery bool    `gorm:"not null;default:false"` // above/below: also notify when the value is back to normal; offline: when the device is back online
 	Message        string  `gorm:"size:255"`               // optional text replacing the default alert
 	Enabled        bool    `gorm:"not null;default:true"`
 }

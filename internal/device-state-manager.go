@@ -44,7 +44,6 @@ type DeviceConfig struct {
 	LedPwmOff  *uint
 	LedPwmOn   *uint
 
-	LedHardware *LedHardware // from the GPIO template; nil until the Template reply arrives
 	LightPower  *bool
 	Dimmer      *uint // 0..100
 	Hue         *uint // 0..360
@@ -54,16 +53,13 @@ type DeviceConfig struct {
 	Rules  [3]*RuleConfig
 }
 
-type DeviceFirmware struct {
-	Version *string
-	BuiltAt *time.Time
-}
-
 type DeviceState struct {
-	Device   *model.Device
-	Config   *DeviceConfig
-	Firmware *DeviceFirmware
-	Hardware *string
+	Device *model.Device // also holds the profile (template, chip, firmware, sensors)
+	Config *DeviceConfig
+
+	// ProfileRefresh is set while a manual profile refresh waits for the replies: the next
+	// STATUS10 may then change the sensor type in any direction, not only up (see ApplyDetection).
+	ProfileRefresh bool
 
 	Online     bool
 	On         *bool
@@ -107,8 +103,7 @@ func NewDeviceStateManager(devices []*model.Device) *DeviceStateManager {
 			Online:   false,
 			On:       nil,
 			Device:   device,
-			Config:   &DeviceConfig{},
-			Firmware: &DeviceFirmware{},
+			Config: &DeviceConfig{},
 		}
 	}
 
@@ -130,8 +125,7 @@ func (d *DeviceStateManager) Add(device *model.Device) {
 		Online:   false,
 		On:       nil,
 		Device:   device,
-		Config:   &DeviceConfig{},
-		Firmware: &DeviceFirmware{},
+		Config: &DeviceConfig{},
 	}
 }
 

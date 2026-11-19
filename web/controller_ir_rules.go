@@ -88,8 +88,8 @@ func (c *IrRulesController) validate(r *http.Request, req *IrRuleRequest) string
 				return "power action needs targetDeviceId"
 			}
 			t := c.states.GetById(*a.TargetDeviceId)
-			if t == nil || t.Device.SensorType == model.SensorTypeIR {
-				return "power action target must be an existing non-IR device"
+			if t == nil || !t.CanToggle() {
+				return "power action target must be an existing device with a relay"
 			}
 			a.SignalId, a.DelayMs = nil, 0
 		case model.IrActionIR:

@@ -3,6 +3,7 @@ package internal
 import (
 	"fmt"
 	"math"
+	"smart-home/model"
 	"strconv"
 	"strings"
 )
@@ -30,6 +31,8 @@ const (
 	gpioPwmInv     = 14
 	gpioLedLink    = 17
 	gpioLedLinkInv = 18
+	gpioIrSend     = 33
+	gpioIrRecv     = 34
 	gpioWs2812     = 43
 )
 
@@ -61,16 +64,28 @@ func DetectLedHardware(gpio []int) LedHardware {
 	return hw
 }
 
+// LedHardware is what the stored template says about LEDs, lights and relays; nil until it's known.
+func (s *DeviceState) LedHardware() *LedHardware {
+	if s.Device.Template == nil {
+		return nil
+	}
+	hw := DetectLedHardware(s.Device.Template.Gpio)
+	return &hw
+}
+
 // LightPowerIndex is the POWER<n> of the light: Tasmota puts it after the relays.
-// Until the template is known, devices that can't be toggled are assumed to have no relay.
+// Until the template is known, the device is assumed to have no relay.
 func (s *DeviceState) LightPowerIndex() int {
-	if hw := s.Config.LedHardware; hw != nil {
+	if hw := s.LedHardware(); hw != nil {
 		return hw.Relays + 1
 	}
-	if s.Device.SupportsToggle {
-		return 2
-	}
 	return 1
+}
+
+// CanToggle: the device has a relay (from the template) and isn't an IR remote.
+func (s *DeviceState) CanToggle() bool {
+	hw := s.LedHardware()
+	return hw != nil && hw.Relays > 0 && s.Device.SensorType != model.SensorTypeIR
 }
 
 // HueSatToHex returns the colour at full brightness as "#rrggbb".

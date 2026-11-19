@@ -138,8 +138,8 @@ func (c *EventParser) parseResult(_ driver.Client, msg driver.Message) {
 	}
 
 	// Multi-key replies: check these before picking a single key
-	if gpio, ok := rawMapped["GPIO"].([]any); ok {
-		e := event.NewTemplate(gpio)
+	if _, ok := rawMapped["GPIO"].([]any); ok {
+		e := event.NewTemplate(rawMapped)
 		c.dispatcher.DispatchMqqt(&e, msg.Topic())
 		return
 	}

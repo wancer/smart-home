@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"smart-home/event"
 	"smart-home/internal"
-	"smart-home/model"
 	"sync"
 	"time"
 
@@ -118,6 +117,9 @@ func (s *WebSocketServer) Subscribe(dispatcher *event.Dispatcher, states *intern
 				return
 			}
 
+			if !internal.HasSensorData(deviceState.Device.SensorType, p.StatusSNS) {
+				return
+			}
 			wsEvent := NewSensorFromEvent(p.StatusSNS, deviceState.Device)
 			s.Send("sensor", wsEvent)
 		},
@@ -133,25 +135,28 @@ func (s *WebSocketServer) Subscribe(dispatcher *event.Dispatcher, states *intern
 				return
 			}
 
+			if !internal.HasSensorData(deviceState.Device.SensorType, p) {
+				return
+			}
 			wsEvent := NewSensorFromEvent(p, deviceState.Device)
 			s.Send("sensor", wsEvent)
 		},
 	)
 
-	// IR devices get their availability from LWT only, which emits no Power or
-	// InternalOfflineEvent, so push their online/offline transitions explicitly.
+	// IR remotes and unrecognised devices get their availability from LWT, which emits no
+	// Power or InternalOfflineEvent, so push their online/offline transitions explicitly.
 	dispatcher.Subscribe(
 		"DeviceAvailability",
 		func(raw any) {
 			e := raw.(*event.DeviceAvailability)
 			deviceState := states.GetById(e.DeviceId)
-			if deviceState == nil || deviceState.Device.SensorType != model.SensorTypeIR {
+			if deviceState == nil || !deviceState.Device.AvailabilityFromLwt() {
 				return
 			}
 
 			wsEvent := WsStateEvent{ID: e.DeviceId}
 			if e.Online {
-				wsEvent.On = new(true)
+				wsEvent.On = deviceState.On // true, or for relays the last POWER (nil until it arrives)
 			}
 			s.Send("state", wsEvent)
 		},

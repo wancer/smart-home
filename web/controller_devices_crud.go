@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"smart-home/model"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
@@ -15,9 +16,6 @@ type DeviceUpsertRequest struct {
 	Name           string `json:"name"`
 	Topic          string `json:"topic"`
 	Enabled        bool   `json:"enabled"`
-	SensorType     string `json:"sensorType"`
-	SupportsToggle bool   `json:"supportsToggle"`
-	StoreChipTemp  bool   `json:"storeChipTemp"`
 	OfflineTimeout uint   `json:"offlineTimeout"` // seconds, 0 = auto
 	// StorageTiers is the sensor data retention: [] = the default; omitted = the default
 	// on create, unchanged on update.
@@ -49,7 +47,7 @@ func (c *DevicesController) Create(w http.ResponseWriter, r *http.Request) {
 	device := &model.Device{
 		Name:       req.Name,
 		Topic:      req.Topic,
-		SensorType: req.SensorType,
+		SensorType: model.SensorTypeOther, // detected once the device replies
 	}
 	err := c.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(device).Error; err != nil {
@@ -58,8 +56,6 @@ func (c *DevicesController) Create(w http.ResponseWriter, r *http.Request) {
 
 		// insert replaces false with the column default (true), update doesn't
 		device.Enabled = req.Enabled
-		device.SupportsToggle = req.SupportsToggle && req.SensorType != model.SensorTypeIR
-		device.StoreChipTemp = req.StoreChipTemp
 		device.OfflineTimeout = req.OfflineTimeout
 		if req.StorageTiers != nil {
 			device.StorageTiers = *req.StorageTiers
@@ -97,19 +93,20 @@ func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Save writes every column; the profile ones may change from MQTT, so they're left out.
 	device := state.Device
 	device.Name = req.Name
 	device.Topic = req.Topic
 	device.Enabled = req.Enabled
-	device.SensorType = req.SensorType
-	device.SupportsToggle = req.SupportsToggle && req.SensorType != model.SensorTypeIR
-	device.StoreChipTemp = req.StoreChipTemp
 	device.OfflineTimeout = req.OfflineTimeout
 	if req.StorageTiers != nil {
 		device.StorageTiers = *req.StorageTiers
 	}
 
-	if err := c.db.WithContext(r.Context()).Save(device).Error; err != nil {
+	err = c.db.WithContext(r.Context()).Model(device).
+		Select("Name", "Topic", "Enabled", "OfflineTimeout", "StorageTiers").
+		Updates(device).Error
+	if err != nil {
 		slog.Error("[device][update] error", "err", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -186,4 +183,33 @@ func (c *DevicesController) WipeSensorData(w http.ResponseWriter, r *http.Reques
 	c.storage.ClearBuffer(uint(deviceId))
 	slog.Info("[device][wipe-sensor-data] success", "id", deviceId)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// RefreshProfile re-reads the template, chip/firmware and sensors from the device and
+// re-detects the sensor type (which may then also go down, e.g. to "other"). 409 if offline.
+func (c *DevicesController) RefreshProfile(w http.ResponseWriter, r *http.Request) {
+	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	state := c.states.GetById(uint(deviceId))
+	if state == nil {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+	if !state.Online {
+		http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
+		return
+	}
+
+	state.ProfileRefresh = true // the STATUS10 reply detects the type in any direction
+	c.pub.GetTemplate(state.Device)
+	c.pub.GetFirmware(state.Device)
+	c.pub.GetSensors(state.Device)
+	time.Sleep(3 * time.Second)
+	state.ProfileRefresh = false
+
+	slog.Info("[device][profile-refresh] success", "id", deviceId, "sensorType", state.Device.SensorType)
+	json.NewEncoder(w).Encode(NewDeviceResponse(state))
 }

@@ -80,7 +80,9 @@ func validateNotifyRule(device *model.Device, req *NotifyRuleRequest) string {
 	}
 
 	switch req.Kind {
-	case model.NotifyOffline, model.NotifyOnline:
+	case model.NotifyOffline:
+		req.Metric, req.Threshold = "", 0
+	case model.NotifyOnline:
 		req.Metric, req.Threshold, req.NotifyRecovery = "", 0, false
 	case model.NotifyAbove, model.NotifyBelow:
 		metrics := model.MetricsBySensorType[device.SensorType]

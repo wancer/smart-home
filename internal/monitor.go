@@ -3,7 +3,6 @@ package internal
 import (
 	"log/slog"
 	"smart-home/event"
-	"smart-home/model"
 	"time"
 )
 
@@ -33,13 +32,14 @@ func (m *StateMonitor) Run() chan struct{} {
 						continue
 					}
 
-					// IR availability comes from LWT, which stops arriving once disabled. If the
-					// remote also sends telemetry (chip temperature), missing telemetry counts too.
-					if state.Device.SensorType == model.SensorTypeIR && state.Device.Enabled {
+					// IR / unrecognised device availability comes from LWT, which stops arriving once
+					// disabled. If the device also sends telemetry (chip temperature), missing
+					// telemetry counts too.
+					if state.Device.AvailabilityFromLwt() && state.Device.Enabled {
 						if state.LastTelemetry == nil || now.Sub(*state.LastTelemetry) <= OfflineTimeout(state) {
 							continue
 						}
-						slog.Warn("Marking IR as MIA: no telemetry", "deviceId", state.Device.ID)
+						slog.Warn("Marking as MIA: no telemetry", "deviceId", state.Device.ID)
 						m.dispatcher.Dispatch(&event.InternalOfflineEvent{DeviceId: state.Device.ID})
 						continue
 					}

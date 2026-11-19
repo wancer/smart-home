@@ -1,6 +1,11 @@
 package event
 
-import "time"
+import (
+	"encoding/json"
+	"maps"
+	"slices"
+	"time"
+)
 
 type TasmotaTime time.Time
 
@@ -51,12 +56,77 @@ type Chip struct {
 	Temperature float32 `json:"Temperature"`
 }
 
+// SensorEvent is a tele/SENSOR (or STATUS10 StatusSNS) payload. Sensors are recognised by their
+// fields, not their names: the first one with CarbonDioxide is Co2 (SCD40, MHZ19B, ...), the
+// first other one with Temperature and Humidity is TempHum (SHT4X, SHT3X, AM2301, BME280, ...).
 type SensorEvent struct {
-	Time    TasmotaTime   `json:"Time"`
-	Energy  *Energy       `json:"ENERGY"`
-	Co2     *Co2          `json:"SCD40"`
-	TempHum *TempHumidity `json:"SHT4X"`
-	Chip    *Chip         `json:"ESP32"`
+	Time    TasmotaTime
+	Energy  *Energy
+	Co2     *Co2
+	TempHum *TempHumidity
+	Chip    *Chip
+
+	Sensors []string // names of all sensor objects, sorted (ENERGY, SCD40, ESP32, ...)
+}
+
+func (e *SensorEvent) UnmarshalJSON(in []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(in, &raw); err != nil {
+		return err
+	}
+	*e = SensorEvent{}
+	if t, ok := raw["Time"]; ok {
+		if err := json.Unmarshal(t, &e.Time); err != nil {
+			return err
+		}
+	}
+
+	names := slices.Sorted(maps.Keys(raw))
+	for _, name := range names {
+		value := raw[name]
+		if len(value) == 0 || value[0] != '{' { // Time, TempUnit, ...
+			continue
+		}
+		e.Sensors = append(e.Sensors, name)
+
+		switch name {
+		case "ENERGY":
+			if err := json.Unmarshal(value, &e.Energy); err != nil {
+				return err
+			}
+			continue
+		case "ESP32":
+			if err := json.Unmarshal(value, &e.Chip); err != nil {
+				return err
+			}
+			continue
+		}
+
+		var probe struct {
+			CarbonDioxide *uint
+			Temperature   *float32
+			Humidity      *float32
+			DewPoint      *float32
+		}
+		if err := json.Unmarshal(value, &probe); err != nil {
+			continue // not a sensor we know
+		}
+		switch {
+		case probe.CarbonDioxide != nil && e.Co2 == nil:
+			e.Co2 = &Co2{CO2: *probe.CarbonDioxide}
+			e.Co2.Temperature, e.Co2.Humidity, e.Co2.DewPoint = deref(probe.Temperature), deref(probe.Humidity), deref(probe.DewPoint)
+		case probe.CarbonDioxide == nil && probe.Temperature != nil && probe.Humidity != nil && e.TempHum == nil:
+			e.TempHum = &TempHumidity{Temperature: *probe.Temperature, Humidity: *probe.Humidity, DewPoint: deref(probe.DewPoint)}
+		}
+	}
+	return nil
+}
+
+func deref(v *float32) float32 {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 // ChipTemperature returns the ESP32 chip temperature, nil if the device doesn't report it.

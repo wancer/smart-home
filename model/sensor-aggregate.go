@@ -36,7 +36,7 @@ type SensorAggregate struct {
 	HumidityMax    *float32
 	DewPointAvg    *float32
 
-	// ESP32 chip temperature, only for devices with StoreChipTemp; pruned after ChipTemperatureRetention.
+	// ESP32 chip temperature, for every device reporting it; pruned after ChipTemperatureRetention.
 	ChipTemperatureAvg *float32
 }
 

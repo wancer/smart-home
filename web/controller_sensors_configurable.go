@@ -256,7 +256,7 @@ func newDeviceSensorEvent(at time.Time, agg *model.SensorAggregate, sensorType s
 		record.HumidityAvg = agg.HumidityAvg
 		record.HumidityMin = agg.HumidityMin
 		record.HumidityMax = agg.HumidityMax
-	case model.SensorTypeIR:
+	case model.SensorTypeIR, model.SensorTypeOther:
 		// no sensors
 	default:
 		slog.Error("UNKOWN_TYPE: " + sensorType)

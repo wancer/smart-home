@@ -38,7 +38,7 @@ func (init *DatabaseInitializer) migrate() error {
 	if err := init.db.AutoMigrate(&model.NotifyRule{}); err != nil {
 		return err
 	}
-	if err := init.dropCO2e(); err != nil {
+	if err := init.dropColumns(); err != nil {
 		return err
 	}
 	if err := init.backfillAggregates(); err != nil {
@@ -47,10 +47,13 @@ func (init *DatabaseInitializer) migrate() error {
 	return nil
 }
 
-// dropCO2e removes the eCO2 columns: Tasmota stopped reporting eCO2 in v15.5.0.
-// AutoMigrate never drops columns, so this is done explicitly. It is a no-op once
-// the columns are gone, and on fresh databases. Run VACUUM to shrink the file.
-func (init *DatabaseInitializer) dropCO2e() error {
+// dropColumns removes columns that are no longer used. AutoMigrate never drops columns, so
+// this is done explicitly. It is a no-op once the columns are gone, and on fresh databases.
+// Run VACUUM to shrink the file.
+//   - eCO2: Tasmota stopped reporting it in v15.5.0
+//   - device.supports_toggle: derived from the relays in the stored template now
+//   - device.store_chip_temp: the chip temperature is stored for every device reporting it
+func (init *DatabaseInitializer) dropColumns() error {
 	columns := []struct {
 		model  any
 		table  string
@@ -58,6 +61,8 @@ func (init *DatabaseInitializer) dropCO2e() error {
 	}{
 		{&model.SensorAggregate{}, "sensor_aggregate", "co2e_avg"},
 		{&model.SensorEvent{}, "sensor_event", "co2e"},
+		{&model.Device{}, "device", "supports_toggle"},
+		{&model.Device{}, "device", "store_chip_temp"},
 	}
 	for _, c := range columns {
 		if !init.db.Migrator().HasColumn(c.model, c.column) {

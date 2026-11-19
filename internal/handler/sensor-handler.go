@@ -13,8 +13,13 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 	now := time.Now()
 	state.ChipTemperature = e.ChipTemperature()
 
-	if state.Device.SensorType == model.SensorTypeIR {
-		h.handleIrTelemetry(state, e, &now)
+	if state.ApplyDetection(e, false) {
+		h.profiles.Save(state.Device)
+	}
+
+	// IR remotes, unrecognised devices, or a message without the device's sensor
+	if !internal.HasSensorData(state.Device.SensorType, e) {
+		h.handleBareTelemetry(state, e, &now)
 		return
 	}
 
@@ -47,18 +52,17 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 		state.Temperature = &e.TempHum.Temperature
 		state.Humidity = &e.TempHum.Humidity
 		state.DewPoint = &e.TempHum.DewPoint
-	default:
-		slog.Error("UNKOWN_TYPE: " + state.Device.SensorType)
-		return
 	}
 
 	h.dispatcher.Dispatch(&event.SensorsUpdated{DeviceId: state.Device.ID})
 }
 
-// handleIrTelemetry treats an IR remote's telemetry (it only carries the ESP32 chip
-// temperature, SetOption146 1) as a sign of life, on top of LWT.
-func (h *EventHandler) handleIrTelemetry(state *internal.DeviceState, e *event.SensorEvent, now *time.Time) {
-	if state.Device.StoreChipTemp && state.ChipTemperature != nil {
+// handleBareTelemetry treats telemetry without the device's sensor data (IR remotes and
+// unrecognised devices: only the ESP32 chip temperature, SetOption146 1) as a sign of life,
+// on top of LWT. A sensor device that sent a message without its sensor only gets the
+// chip temperature.
+func (h *EventHandler) handleBareTelemetry(state *internal.DeviceState, e *event.SensorEvent, now *time.Time) {
+	if state.ChipTemperature != nil {
 		h.storage.Store(&model.SensorEvent{
 			DeviceId:        state.Device.ID,
 			RealTime:        now.UTC(),
@@ -66,13 +70,18 @@ func (h *EventHandler) handleIrTelemetry(state *internal.DeviceState, e *event.S
 			ChipTemperature: state.ChipTemperature,
 		})
 	}
+	if !state.Device.AvailabilityFromLwt() {
+		return
+	}
 
 	state.LastUpdate = now
 	state.LastTelemetry = now
 	if !state.Online {
 		slog.Info(fmt.Sprintf("Getting %s online (telemetry)", state.Device.Name))
 		state.Online = true
-		state.On = new(true) // IR "on" mirrors availability
+		if !state.CanToggle() {
+			state.On = new(true) // "on" mirrors availability; for relays the POWER reply sets it
+		}
 		h.p.PublishStates(state.Device)
 		h.dispatcher.Dispatch(&event.DeviceAvailability{DeviceId: state.Device.ID, Online: true})
 	}
@@ -83,9 +92,7 @@ func toModel(e *event.SensorEvent, device *model.Device, now *time.Time) *model.
 	r.DeviceId = device.ID
 	r.RealTime = now.UTC()
 	r.DeviceTime = time.Time(e.Time)
-	if device.StoreChipTemp {
-		r.ChipTemperature = e.ChipTemperature()
-	}
+	r.ChipTemperature = e.ChipTemperature()
 
 	switch device.SensorType {
 	case model.SensorTypeEnergy:
@@ -104,8 +111,6 @@ func toModel(e *event.SensorEvent, device *model.Device, now *time.Time) *model.
 		r.Temperature = &e.TempHum.Temperature
 		r.Humidity = &e.TempHum.Humidity
 		r.DewPoint = &e.TempHum.DewPoint
-	default:
-		slog.Error("UNKOWN_TYPE: " + device.SensorType)
 	}
 
 	return r

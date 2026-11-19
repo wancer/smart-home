@@ -18,6 +18,7 @@ type EventHandler struct {
 	states     *internal.DeviceStateManager
 	p          EventPublisher
 	storage    *internal.Storage
+	profiles   *internal.DeviceProfiles
 	ir         IrReceivedHandler
 }
 
@@ -26,6 +27,7 @@ func NewEventHandler(
 	states *internal.DeviceStateManager,
 	p EventPublisher, // interface
 	storage *internal.Storage,
+	profiles *internal.DeviceProfiles,
 	ir IrReceivedHandler,
 ) *EventHandler {
 	return &EventHandler{
@@ -33,6 +35,7 @@ func NewEventHandler(
 		states:     states,
 		p:          p,
 		storage:    storage,
+		profiles:   profiles,
 		ir:         ir,
 	}
 }

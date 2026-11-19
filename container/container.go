@@ -68,7 +68,8 @@ func Build(cfg *config.Config) (*Container, error) {
 	notifier.Subscribe(dispatcher)
 
 	irRunner := automation.NewIrRuleRunner(db, states, publisher)
-	eventHandler := handler.NewEventHandler(dispatcher, states, publisher, storage, irRunner)
+	profiles := internal.NewDeviceProfiles(db)
+	eventHandler := handler.NewEventHandler(dispatcher, states, publisher, storage, profiles, irRunner)
 	eventHandler.Subscribe(dispatcher, states)
 
 	ws := web.NewWebSocketServer()

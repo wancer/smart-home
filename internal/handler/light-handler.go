@@ -1,13 +1,24 @@
 package handler
 
 import (
+	"reflect"
 	"smart-home/event"
 	"smart-home/internal"
+	"smart-home/model"
 )
 
+// HandleTemplate stores the GPIO template in the device profile; an IR GPIO may set the type.
 func (h *EventHandler) HandleTemplate(state *internal.DeviceState, e *event.Template) {
-	hw := internal.DetectLedHardware(e.Gpio)
-	state.Config.LedHardware = &hw
+	d := state.Device
+	tpl := &model.DeviceTemplate{Name: e.Name, Gpio: e.Gpio, Flag: e.Flag, Base: e.Base}
+	changed := d.Template == nil || !reflect.DeepEqual(*d.Template, *tpl)
+	d.Template = tpl
+	if state.ApplyDetection(nil, false) {
+		changed = true
+	}
+	if changed {
+		h.profiles.Save(d)
+	}
 }
 
 func (h *EventHandler) HandleLight(state *internal.DeviceState, e *event.Light) {
