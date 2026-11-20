@@ -13,6 +13,7 @@ func (h *EventHandler) HandleTeleState(state *internal.DeviceState, e *event.Tel
 	now := time.Now()
 	if e.UptimeSec != nil {
 		state.Uptime = &internal.DeviceUptime{Seconds: *e.UptimeSec, At: now}
+		h.dispatcher.Dispatch(&event.DeviceRestartInfo{DeviceId: state.Device.ID})
 	}
 	if e.LoadAvg != nil {
 		state.LoadAvg = new(*e.LoadAvg)

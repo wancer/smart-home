@@ -232,6 +232,8 @@ type DeviceProfile struct {
 	Chip            *string               `json:"chip"`
 	FirmwareVersion *string               `json:"firmwareVersion"`
 	FirmwareBuiltAt *string               `json:"firmwareBuiltAt"`
+	FirmwareCore    *string               `json:"firmwareCore"`
+	FirmwareSdk     *string               `json:"firmwareSdk"`
 	Sensors         []string              `json:"sensors"`
 	ProfiledAt      *int64                `json:"profiledAt"` // unix time of the last change/refresh
 	Features        DeviceFeatures        `json:"features"`
@@ -270,6 +272,12 @@ func newDeviceProfile(state *internal.DeviceState) *DeviceProfile {
 	if d.FirmwareBuiltAt != nil {
 		p.FirmwareBuiltAt = new(d.FirmwareBuiltAt.Format(time.DateTime))
 	}
+	if d.FirmwareCore != "" {
+		p.FirmwareCore = new(d.FirmwareCore)
+	}
+	if d.FirmwareSdk != "" {
+		p.FirmwareSdk = new(d.FirmwareSdk)
+	}
 	if d.ProfiledAt != nil {
 		p.ProfiledAt = new(d.ProfiledAt.Unix())
 	}
@@ -286,6 +294,8 @@ func newDeviceProfile(state *internal.DeviceState) *DeviceProfile {
 type FirmwareConfig struct {
 	Version         *string `json:"version"`
 	BuildAt         *string `json:"buildAt"`
+	Core            *string `json:"core"` // STATUS2 Core, e.g. "3.3.8"
+	Sdk             *string `json:"sdk"`  // STATUS2 SDK, e.g. "5.5.4.260407"
 	LatestVersion   *string `json:"latestVersion"`
 	UpdateAvailable bool    `json:"updateAvailable"`
 }
@@ -300,6 +310,12 @@ func NewFirmwareConfig(d *model.Device, latest *string) FirmwareConfig {
 	}
 	if d.FirmwareBuiltAt != nil {
 		firmware.BuildAt = new(d.FirmwareBuiltAt.Format(time.DateTime))
+	}
+	if d.FirmwareCore != "" {
+		firmware.Core = new(d.FirmwareCore)
+	}
+	if d.FirmwareSdk != "" {
+		firmware.Sdk = new(d.FirmwareSdk)
 	}
 	return firmware
 }

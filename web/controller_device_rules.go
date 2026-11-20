@@ -37,14 +37,8 @@ type RuleResponse struct {
 }
 
 func (c *DeviceRulesController) Get(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-	state := c.states.GetById(uint(deviceId))
+	state := deviceState(w, r, c.states)
 	if state == nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 
@@ -62,25 +56,19 @@ func (c *DeviceRulesController) Get(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	slog.Info("[device][rules-get] success", "deviceId", deviceId)
+	slog.Info("[device][rules-get] success", "deviceId", state.Device.ID)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(rules)
 }
 
 func (c *DeviceRulesController) Set(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	state := deviceState(w, r, c.states)
+	if state == nil {
 		return
 	}
 	n, err := strconv.Atoi(chi.URLParam(r, "n"))
 	if err != nil || n < 1 || n > 3 {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-	state := c.states.GetById(uint(deviceId))
-	if state == nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 
@@ -109,6 +97,6 @@ func (c *DeviceRulesController) Set(w http.ResponseWriter, r *http.Request) {
 	}
 	c.pub.SetRule(state.Device, n, strconv.Itoa(stateCmd))
 
-	slog.Info("[device][rule-set] success", "deviceId", deviceId, "n", n)
+	slog.Info("[device][rule-set] success", "deviceId", state.Device.ID, "n", n)
 	w.WriteHeader(http.StatusOK)
 }

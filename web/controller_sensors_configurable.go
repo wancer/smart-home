@@ -31,16 +31,8 @@ type SensorsConfigurableController struct {
 }
 
 func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
-	if err != nil {
-		slog.Error("[sensors][configurable] error", "err", err)
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-	state := c.states.GetById(uint(deviceId))
+	state := deviceState(w, r, c.states)
 	if state == nil {
-		slog.Error("[sensors][configurable] error", "err", err)
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 	duration, err := time.ParseDuration(chi.URLParam(r, "duration"))

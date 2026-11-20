@@ -5,10 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"smart-home/model"
-	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 )
 
@@ -76,20 +74,13 @@ func (c *DevicesController) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	state := deviceState(w, r, c.states)
+	if state == nil {
 		return
 	}
 
 	req, ok := decodeDeviceRequest(w, r)
 	if !ok {
-		return
-	}
-
-	state := c.states.GetById(uint(deviceId))
-	if state == nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 
@@ -103,7 +94,7 @@ func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
 		device.StorageTiers = *req.StorageTiers
 	}
 
-	err = c.db.WithContext(r.Context()).Model(device).
+	err := c.db.WithContext(r.Context()).Model(device).
 		Select("Name", "Topic", "Enabled", "OfflineTimeout", "StorageTiers").
 		Updates(device).Error
 	if err != nil {
@@ -113,37 +104,32 @@ func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c.syncSubscription(device)
-	slog.Info("[device][update] success", "id", deviceId)
+	slog.Info("[device][update] success", "id", device.ID)
 	json.NewEncoder(w).Encode(NewDeviceResponse(state))
 }
 
 func (c *DevicesController) Delete(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	state := deviceState(w, r, c.states)
+	if state == nil {
 		return
 	}
+	deviceId := state.Device.ID
 
-	if c.states.GetById(uint(deviceId)) == nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		return
-	}
-
-	if err := c.db.WithContext(r.Context()).Delete(&model.Device{}, uint(deviceId)).Error; err != nil {
+	if err := c.db.WithContext(r.Context()).Delete(&model.Device{}, deviceId).Error; err != nil {
 		slog.Error("[device][delete] error", "err", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	c.db.WithContext(r.Context()).Where("device_id = ?", uint(deviceId)).Delete(&model.IrSignal{})
-	c.db.WithContext(r.Context()).Where("rule_id IN (?)", c.db.Model(&model.IrRule{}).Select("id").Where("device_id = ?", uint(deviceId))).Delete(&model.IrRuleAction{})
-	c.db.WithContext(r.Context()).Where("device_id = ?", uint(deviceId)).Delete(&model.IrRule{})
-	c.db.WithContext(r.Context()).Where("device_id = ?", uint(deviceId)).Delete(&model.NotifyRule{})
+	c.db.WithContext(r.Context()).Where("device_id = ?", deviceId).Delete(&model.IrSignal{})
+	c.db.WithContext(r.Context()).Where("rule_id IN (?)", c.db.Model(&model.IrRule{}).Select("id").Where("device_id = ?", deviceId)).Delete(&model.IrRuleAction{})
+	c.db.WithContext(r.Context()).Where("device_id = ?", deviceId).Delete(&model.IrRule{})
+	c.db.WithContext(r.Context()).Where("device_id = ?", deviceId).Delete(&model.NotifyRule{})
 	if err := c.notifier.Reload(); err != nil {
 		slog.Error("[device][delete] notifier reload error", "err", err)
 	}
-	c.consumer.Remove(uint(deviceId))
-	c.states.Delete(uint(deviceId))
+	c.consumer.Remove(deviceId)
+	c.states.Delete(deviceId)
 	slog.Info("[device][delete] success", "id", deviceId)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -157,30 +143,25 @@ func (c *DevicesController) syncSubscription(device *model.Device) {
 }
 
 func (c *DevicesController) WipeSensorData(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	state := deviceState(w, r, c.states)
+	if state == nil {
 		return
 	}
+	deviceId := state.Device.ID
 
-	if c.states.GetById(uint(deviceId)) == nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		return
-	}
-
-	if err := c.db.WithContext(r.Context()).Where("device_id = ?", uint(deviceId)).Delete(&model.SensorAggregate{}).Error; err != nil && err != gorm.ErrRecordNotFound {
+	if err := c.db.WithContext(r.Context()).Where("device_id = ?", deviceId).Delete(&model.SensorAggregate{}).Error; err != nil && err != gorm.ErrRecordNotFound {
 		slog.Error("[device][wipe-sensor-data] aggregate error", "err", err, "id", deviceId)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	if err := c.db.WithContext(r.Context()).Where("device_id = ?", uint(deviceId)).Delete(&model.SensorHistory{}).Error; err != nil && err != gorm.ErrRecordNotFound {
+	if err := c.db.WithContext(r.Context()).Where("device_id = ?", deviceId).Delete(&model.SensorHistory{}).Error; err != nil && err != gorm.ErrRecordNotFound {
 		slog.Error("[device][wipe-sensor-data] history error", "err", err, "id", deviceId)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	c.storage.ClearBuffer(uint(deviceId))
+	c.storage.ClearBuffer(deviceId)
 	slog.Info("[device][wipe-sensor-data] success", "id", deviceId)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -188,14 +169,8 @@ func (c *DevicesController) WipeSensorData(w http.ResponseWriter, r *http.Reques
 // RefreshProfile re-reads the template, chip/firmware and sensors from the device and
 // re-detects the sensor type (which may then also go down, e.g. to "other"). 409 if offline.
 func (c *DevicesController) RefreshProfile(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-	state := c.states.GetById(uint(deviceId))
+	state := deviceState(w, r, c.states)
 	if state == nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 	if !state.Online {
@@ -210,6 +185,6 @@ func (c *DevicesController) RefreshProfile(w http.ResponseWriter, r *http.Reques
 	time.Sleep(3 * time.Second)
 	state.ProfileRefresh = false
 
-	slog.Info("[device][profile-refresh] success", "id", deviceId, "sensorType", state.Device.SensorType)
+	slog.Info("[device][profile-refresh] success", "id", state.Device.ID, "sensorType", state.Device.SensorType)
 	json.NewEncoder(w).Encode(NewDeviceResponse(state))
 }

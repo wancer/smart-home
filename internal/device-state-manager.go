@@ -80,6 +80,8 @@ type DeviceState struct {
 
 	Uptime  *DeviceUptime // from tele/STATE or STATUS11
 	LoadAvg *uint         // Tasmota main loop load, %
+	// RestartReason of the last boot (STATUS1), polled when the device comes online; nil while offline
+	RestartReason *string
 }
 
 type DeviceUptime struct {

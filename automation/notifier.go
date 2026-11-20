@@ -18,8 +18,11 @@ const (
 	// A fired threshold alert re-arms only after the value stayed normal this long
 	// (or the rule's own duration, if longer), so a value hovering around the
 	// threshold does not flood the chat.
-	minRecovery         = time.Minute
-	offlineCheckPeriod  = 15 * time.Second
+	minRecovery        = time.Minute
+	offlineCheckPeriod = 15 * time.Second
+	// The "back online" message waits this long at most for the uptime and restart reason
+	// polled when the device came online (PublishStates).
+	restartInfoWait     = 15 * time.Second
 	notifierTimeFormat  = "15:04"
 	notifierEmojiAlert  = "⚠️"
 	notifierEmojiOk     = "✅"
@@ -30,6 +33,15 @@ const (
 // Messenger delivers notification text (Telegram).
 type Messenger interface {
 	Notify(text string)
+}
+
+// pendingOnline is a "back online" message waiting for the device's uptime and restart reason.
+type pendingOnline struct {
+	text     string             // default text
+	lastSeen time.Time          // last message before it went offline; zero if unknown
+	recovery bool               // follow-up of a fired offline alert (always the default text)
+	rules    []model.NotifyRule // online rules (may have a custom message)
+	timer    *time.Timer
 }
 
 type alertState struct {
@@ -47,6 +59,8 @@ type Notifier struct {
 	mu           sync.Mutex
 	rules        map[uint][]model.NotifyRule // device id -> enabled rules
 	offlineSince map[uint]time.Time          // device id -> when it went offline
+	lastSeen     map[uint]time.Time          // device id -> last message before it went offline
+	pending      map[uint]*pendingOnline     // device id -> "back online" message waiting for restart info
 	alerts       map[uint]*alertState        // rule id -> runtime state
 }
 
@@ -55,6 +69,8 @@ func NewNotifier(db *gorm.DB, states *internal.DeviceStateManager, out Messenger
 		db: db, states: states, out: out,
 		rules:        map[uint][]model.NotifyRule{},
 		offlineSince: map[uint]time.Time{},
+		lastSeen:     map[uint]time.Time{},
+		pending:      map[uint]*pendingOnline{},
 		alerts:       map[uint]*alertState{},
 	}
 }
@@ -102,6 +118,9 @@ func (n *Notifier) Subscribe(dispatcher *event.Dispatcher) {
 	dispatcher.Subscribe("SensorsUpdated", func(raw any) {
 		n.onSensors(raw.(*event.SensorsUpdated))
 	})
+	dispatcher.Subscribe("DeviceRestartInfo", func(raw any) {
+		n.onRestartInfo(raw.(*event.DeviceRestartInfo))
+	})
 }
 
 // Run fires offline rules that have a duration once the device stayed offline long enough.
@@ -138,14 +157,25 @@ func (n *Notifier) onAvailability(e *event.DeviceAvailability) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
+	// A message still waiting for restart info goes out now, before anything else about the device.
+	n.flushOnline(e.DeviceId)
+
 	// Disabling a device makes the monitor mark it offline: that is not worth a message.
 	if state == nil || !state.Device.Enabled {
 		delete(n.offlineSince, e.DeviceId)
+		delete(n.lastSeen, e.DeviceId)
+		for _, rule := range n.rules[e.DeviceId] {
+			delete(n.alerts, rule.ID)
+		}
 		return
 	}
 
 	if !e.Online {
 		n.offlineSince[e.DeviceId] = now
+		delete(n.lastSeen, e.DeviceId)
+		if state.LastUpdate != nil {
+			n.lastSeen[e.DeviceId] = *state.LastUpdate
+		}
 		for _, rule := range n.rules[e.DeviceId] {
 			a := n.alert(rule.ID)
 			// readings stop while offline: duration windows restart once it is back
@@ -157,24 +187,110 @@ func (n *Notifier) onAvailability(e *event.DeviceAvailability) {
 
 	// Without a recorded offline period (e.g. first telemetry after a restart) there is nothing to report.
 	since, wasOffline := n.offlineSince[e.DeviceId]
+	lastSeen := n.lastSeen[e.DeviceId]
 	delete(n.offlineSince, e.DeviceId)
+	delete(n.lastSeen, e.DeviceId)
+	down := now.Sub(since)
+	p := &pendingOnline{
+		text: fmt.Sprintf("%s %s is back online (was offline for %s)",
+			notifierEmojiOnline, state.Device.Name, humanDuration(down)),
+		lastSeen: lastSeen,
+	}
 	for _, rule := range n.rules[e.DeviceId] {
 		switch rule.Kind {
 		case model.NotifyOffline:
 			// Only follow up an offline alert that was actually sent.
 			if a := n.alerts[rule.ID]; a != nil && a.firing && rule.NotifyRecovery && wasOffline {
-				n.out.Notify(fmt.Sprintf("%s %s is back online (was offline for %s)",
-					notifierEmojiOnline, state.Device.Name, humanDuration(now.Sub(since))))
+				p.recovery = true
 			}
 			delete(n.alerts, rule.ID)
 		case model.NotifyOnline:
-			down := now.Sub(since)
 			if wasOffline && down >= rule.Duration() {
-				n.send(rule, fmt.Sprintf("%s %s is back online (was offline for %s)",
-					notifierEmojiOnline, state.Device.Name, humanDuration(down)))
+				p.rules = append(p.rules, rule)
 			}
 		}
 	}
+	if !p.recovery && len(p.rules) == 0 {
+		return
+	}
+
+	// Wait for the uptime and restart reason (polled on the online transition),
+	// so the message tells a restart from a lost connection.
+	deviceId := e.DeviceId
+	p.timer = time.AfterFunc(restartInfoWait, func() {
+		n.mu.Lock()
+		defer n.mu.Unlock()
+		if n.pending[deviceId] == p {
+			n.flushOnline(deviceId)
+		}
+	})
+	n.pending[deviceId] = p
+	if hasRestartInfo(state) {
+		n.flushOnline(deviceId)
+	}
+}
+
+func (n *Notifier) onRestartInfo(e *event.DeviceRestartInfo) {
+	state := n.states.GetById(e.DeviceId)
+	if state == nil || !hasRestartInfo(state) {
+		return
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.flushOnline(e.DeviceId)
+}
+
+func hasRestartInfo(state *internal.DeviceState) bool {
+	return state.Uptime != nil && state.RestartReason != nil
+}
+
+// flushOnline sends the device's pending "back online" message, with whatever restart
+// info is known by now. Must be called with n.mu held.
+func (n *Notifier) flushOnline(deviceId uint) {
+	p := n.pending[deviceId]
+	if p == nil {
+		return
+	}
+	delete(n.pending, deviceId)
+	p.timer.Stop()
+
+	details := ""
+	if state := n.states.GetById(deviceId); state != nil {
+		details = restartDetails(state, p.lastSeen, time.Now())
+	}
+	if p.recovery {
+		n.out.Notify(p.text + details)
+	}
+	for _, rule := range p.rules {
+		n.sendWithDetails(rule, p.text, details)
+	}
+}
+
+// restartDetails tells whether the device restarted while it was away (its uptime is
+// shorter than the time since it was last seen) or just lost the connection.
+func restartDetails(state *internal.DeviceState, lastSeen, now time.Time) string {
+	var lines []string
+	reasonLabel := "Restart reason"
+	if state.Uptime != nil {
+		up := time.Duration(state.Uptime.Current()) * time.Second
+		line := "Uptime: " + humanDuration(up)
+		if !lastSeen.IsZero() {
+			if up < now.Sub(lastSeen) {
+				line += " — device restarted"
+			} else {
+				line += " — no restart, connection was lost"
+				reasonLabel = "Last restart reason"
+			}
+		}
+		lines = append(lines, line)
+	}
+	if state.RestartReason != nil && *state.RestartReason != "" {
+		lines = append(lines, reasonLabel+": "+*state.RestartReason)
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "\n" + strings.Join(lines, "\n")
 }
 
 func (n *Notifier) checkOffline(now time.Time) {
@@ -281,14 +397,19 @@ func (n *Notifier) onSensors(e *event.SensorsUpdated) {
 
 // send delivers the rule's custom message if it has one, the default text otherwise.
 func (n *Notifier) send(rule model.NotifyRule, defaultText string) {
+	n.sendWithDetails(rule, defaultText, "")
+}
+
+// sendWithDetails is send with details appended to either text.
+func (n *Notifier) sendWithDetails(rule model.NotifyRule, defaultText, details string) {
 	if rule.Message != "" {
 		state := n.states.GetById(rule.DeviceId)
 		if state != nil {
-			n.out.Notify(state.Device.Name + ": " + rule.Message)
+			n.out.Notify(state.Device.Name + ": " + rule.Message + details)
 			return
 		}
 	}
-	n.out.Notify(defaultText)
+	n.out.Notify(defaultText + details)
 }
 
 // relayMetric reports whether the metric drops to 0 when the relay is switched off.
@@ -343,18 +464,21 @@ func formatMetric(metric string, v float64) string {
 	return strconv.FormatFloat(v, 'f', u.precision, 64) + u.unit
 }
 
-// humanDuration renders e.g. "1h 5m" or "45s".
+// humanDuration renders e.g. "3d 4h", "1h 5m" or "45s".
 func humanDuration(d time.Duration) string {
 	d = d.Round(time.Second)
-	h, m, s := int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60
+	days, h, m, s := int(d.Hours())/24, int(d.Hours())%24, int(d.Minutes())%60, int(d.Seconds())%60
 	var parts []string
+	if days > 0 {
+		parts = append(parts, strconv.Itoa(days)+"d")
+	}
 	if h > 0 {
 		parts = append(parts, strconv.Itoa(h)+"h")
 	}
-	if m > 0 {
+	if m > 0 && days == 0 {
 		parts = append(parts, strconv.Itoa(m)+"m")
 	}
-	if s > 0 && h == 0 {
+	if s > 0 && h == 0 && days == 0 {
 		parts = append(parts, strconv.Itoa(s)+"s")
 	}
 	if len(parts) == 0 {

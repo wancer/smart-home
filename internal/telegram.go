@@ -119,32 +119,6 @@ func chunkLines(lines []string, max int) []string {
 	return chunks
 }
 
-func (t *TelegramNotifier) SendGrabResult(updated, failed []string) error {
-	return t.send(grabResultMessage(updated, failed))
-}
-
-func grabResultMessage(updated, failed []string) string {
-	if len(updated) == 0 && len(failed) == 0 {
-		return "No new data"
-	}
-	var parts []string
-	if len(updated) > 0 {
-		parts = append(parts, "Got new data for:\n"+bulletList(updated))
-	}
-	if len(failed) > 0 {
-		parts = append(parts, "Errors fetching:\n"+bulletList(failed))
-	}
-	return strings.Join(parts, "\n\n")
-}
-
-func bulletList(items []string) string {
-	lines := make([]string, len(items))
-	for i, item := range items {
-		lines[i] = "• " + item
-	}
-	return strings.Join(lines, "\n")
-}
-
 func (t *TelegramNotifier) send(text string) error {
 	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", t.botToken)
 	resp, err := t.client.PostForm(apiURL, url.Values{

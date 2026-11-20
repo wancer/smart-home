@@ -6,10 +6,8 @@ import (
 	"net/http"
 	"smart-home/internal"
 	"smart-home/model"
-	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 )
 
@@ -23,16 +21,8 @@ type SensorsDailyController struct {
 }
 
 func (c *SensorsDailyController) Get(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
-	if err != nil {
-		slog.Error("[sensors][daily] error", "err", err)
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-	state := c.states.GetById(uint(deviceId))
+	state := deviceState(w, r, c.states)
 	if state == nil {
-		slog.Error("[sensors][daily] error", "err", err)
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 

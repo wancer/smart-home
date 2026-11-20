@@ -44,18 +44,18 @@ func toValue[T any](v reflect.Value) T {
 	return v.Convert(reflect.TypeFor[T]()).Interface().(T)
 }
 
-func (h *EventHandler) Subscribe(dispatcher *event.Dispatcher, states *internal.DeviceStateManager) {
+func (h *EventHandler) Subscribe() {
 	t := reflect.ValueOf(h)
 	for m := range t.Methods() {
 		if !strings.HasPrefix(m.Name, "Handle") {
 			continue
 		}
 
-		dispatcher.Subscribe(
+		h.dispatcher.Subscribe(
 			m.Type.In(2).Elem().Name(),
 			func(raw any) {
 				e := raw.(event.MqttEvent)
-				deviceState := states.GetByTopic(e.Topic)
+				deviceState := h.states.GetByTopic(e.Topic)
 				if deviceState == nil { // in-flight message of a deleted or renamed device
 					return
 				}
@@ -70,7 +70,7 @@ func (h *EventHandler) Subscribe(dispatcher *event.Dispatcher, states *internal.
 		)
 	}
 
-	dispatcher.Subscribe(
+	h.dispatcher.Subscribe(
 		"InternalOfflineEvent",
 		func(raw any) {
 			e := raw.(*event.InternalOfflineEvent)

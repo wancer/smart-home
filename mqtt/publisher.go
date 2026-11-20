@@ -17,10 +17,13 @@ func NewPublisher(client driver.Client) *Publisher {
 }
 
 // PublishStates polls a device that has just come online (or was just subscribed): the
-// profile (template, firmware; the STATUS10 reply detects the sensor type), power and sensors.
+// profile (template, firmware; the STATUS10 reply detects the sensor type), power and sensors,
+// plus restart reason and uptime for the "back online" notification.
 func (p *Publisher) PublishStates(device *model.Device) {
 	p.GetTemplate(device)
 	p.GetFirmware(device)
+	p.GetRestartReason(device)
+	p.GetStatus(device)
 	if device.SensorType == model.SensorTypeIR {
 		// no power; poll the chip temperature and TelePeriod, which sets the telemetry timeout
 		p.GetTelePeriod(device)
@@ -57,6 +60,11 @@ func (p *Publisher) GetStatus(device *model.Device) {
 	p.publish(device.Topic, "STATUS11", "11")
 }
 
+// GetRestartReason requests STATUS1 (StatusPRM.RestartReason).
+func (p *Publisher) GetRestartReason(device *model.Device) {
+	p.publish(device.Topic, "STATUS1", "1")
+}
+
 func (p *Publisher) GetFirmware(device *model.Device) {
 	p.publish(device.Topic, "STATUS2", "2")
 }
@@ -64,22 +72,6 @@ func (p *Publisher) GetFirmware(device *model.Device) {
 // Upgrade makes the device download firmware from its OtaUrl and restart.
 func (p *Publisher) Upgrade(device *model.Device) {
 	p.publish(device.Topic, "Upgrade", "1")
-}
-
-func (p *Publisher) GetParameters(device *model.Device) {
-	p.publish(device.Topic, "STATUS1", "1")
-}
-
-func (p *Publisher) GetTelemetry(device *model.Device) {
-	p.publish(device.Topic, "STATUS3", "3")
-}
-
-func (p *Publisher) GetMemory(device *model.Device) {
-	p.publish(device.Topic, "STATUS4", "4")
-}
-
-func (p *Publisher) GetTime(device *model.Device) {
-	p.publish(device.Topic, "STATUS7", "")
 }
 
 func (p *Publisher) GetTimers(device *model.Device) {

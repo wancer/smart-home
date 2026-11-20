@@ -39,6 +39,8 @@ type Device struct {
 	Chip            string          // STATUS2 Hardware, e.g. "ESP8266EX", "ESP32-D0WD-V3"
 	FirmwareVersion string          // e.g. "14.3.0(tasmota)"
 	FirmwareBuiltAt *time.Time
+	FirmwareCore    string   // STATUS2 Core, e.g. "3.3.8" (ESP32 Arduino core)
+	FirmwareSdk     string   // STATUS2 SDK, e.g. "5.5.4.260407" (ESP-IDF / NONOS SDK)
 	Sensors         []string `gorm:"type:text;serializer:json"` // sensor names in telemetry, e.g. ENERGY, SCD40, ESP32
 	ProfiledAt      *time.Time
 }

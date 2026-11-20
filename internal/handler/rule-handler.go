@@ -6,7 +6,7 @@ import (
 )
 
 func (h *EventHandler) HandleRule(state *internal.DeviceState, e *event.Rule) {
-	if state == nil || e.N < 1 || e.N > 3 {
+	if e.N < 1 || e.N > 3 {
 		return
 	}
 	state.Config.Rules[e.N-1] = &internal.RuleConfig{

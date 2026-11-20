@@ -7,9 +7,7 @@ import (
 	"smart-home/automation"
 	"smart-home/internal"
 	"smart-home/mqtt"
-	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 )
 
@@ -64,16 +62,8 @@ func (c *DevicesController) GetAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *DevicesController) Get(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
-	if err != nil {
-		slog.Error("[device][get] error", "err", err)
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-	device := c.states.GetById(uint(deviceId))
+	device := deviceState(w, r, c.states)
 	if device == nil {
-		slog.Error("[device][get] error", "err", err)
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 

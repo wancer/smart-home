@@ -34,6 +34,7 @@ func (h *EventHandler) HandleLwt(state *internal.DeviceState, e *event.Lwt) {
 		state.ChipTemperature = nil
 		state.Uptime = nil
 		state.LoadAvg = nil
+		state.RestartReason = nil
 	}
 
 	if changed && state.Online {

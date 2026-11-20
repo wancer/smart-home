@@ -13,7 +13,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 )
 
@@ -55,21 +54,7 @@ type NotificationsResponse struct {
 	Rules              []NotifyRuleResponse `json:"rules"`
 }
 
-func (c *NotificationsController) device(w http.ResponseWriter, r *http.Request) *model.Device {
-	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return nil
-	}
-	state := c.states.GetById(uint(deviceId))
-	if state == nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		return nil
-	}
-	return state.Device
-}
-
-// validate normalises the request and returns a human-readable problem, or "".
+// validateNotifyRule normalises the request and returns a human-readable problem, or "".
 func validateNotifyRule(device *model.Device, req *NotifyRuleRequest) string {
 	req.Message = strings.TrimSpace(req.Message)
 	if utf8.RuneCountInString(req.Message) > 255 {
@@ -124,10 +109,11 @@ func (c *NotificationsController) reload() {
 }
 
 func (c *NotificationsController) Get(w http.ResponseWriter, r *http.Request) {
-	device := c.device(w, r)
-	if device == nil {
+	state := deviceState(w, r, c.states)
+	if state == nil {
 		return
 	}
+	device := state.Device
 
 	var rules []model.NotifyRule
 	if err := c.db.WithContext(r.Context()).Where("device_id = ?", device.ID).Order("id").Find(&rules).Error; err != nil {
@@ -151,10 +137,11 @@ func (c *NotificationsController) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *NotificationsController) Create(w http.ResponseWriter, r *http.Request) {
-	device := c.device(w, r)
-	if device == nil {
+	state := deviceState(w, r, c.states)
+	if state == nil {
 		return
 	}
+	device := state.Device
 	var req NotifyRuleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
@@ -181,13 +168,13 @@ func (c *NotificationsController) Create(w http.ResponseWriter, r *http.Request)
 }
 
 func (c *NotificationsController) Update(w http.ResponseWriter, r *http.Request) {
-	device := c.device(w, r)
-	if device == nil {
+	state := deviceState(w, r, c.states)
+	if state == nil {
 		return
 	}
-	ruleId, err := strconv.Atoi(chi.URLParam(r, "ruleId"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	device := state.Device
+	ruleId, ok := urlInt(w, r, "ruleId")
+	if !ok {
 		return
 	}
 	var rule model.NotifyRule
@@ -219,13 +206,13 @@ func (c *NotificationsController) Update(w http.ResponseWriter, r *http.Request)
 }
 
 func (c *NotificationsController) Delete(w http.ResponseWriter, r *http.Request) {
-	device := c.device(w, r)
-	if device == nil {
+	state := deviceState(w, r, c.states)
+	if state == nil {
 		return
 	}
-	ruleId, err := strconv.Atoi(chi.URLParam(r, "ruleId"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	device := state.Device
+	ruleId, ok := urlInt(w, r, "ruleId")
+	if !ok {
 		return
 	}
 	res := c.db.WithContext(r.Context()).Where("id = ? AND device_id = ?", ruleId, device.ID).Delete(&model.NotifyRule{})

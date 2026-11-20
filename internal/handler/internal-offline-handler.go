@@ -24,6 +24,7 @@ func (h *EventHandler) InternalHandleOffline(e *event.InternalOfflineEvent) {
 	state.LastTelemetry = nil
 	state.Uptime = nil
 	state.LoadAvg = nil
+	state.RestartReason = nil
 
 	h.dispatcher.Dispatch(&event.DeviceAvailability{DeviceId: e.DeviceId, Online: false})
 }

@@ -8,10 +8,8 @@ import (
 	"smart-home/internal"
 	"smart-home/model"
 	"smart-home/mqtt"
-	"strconv"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 )
 
@@ -72,29 +70,9 @@ func (req *IrSignalRequest) normalize() bool {
 	return req.Bits > 0 && req.Bits <= 64
 }
 
-// irDevice resolves {deviceId} and ensures it is an IR device.
-func (c *IrController) irDevice(w http.ResponseWriter, r *http.Request) *model.Device {
-	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return nil
-	}
-	state := c.states.GetById(uint(deviceId))
-	if state == nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		return nil
-	}
-	if state.Device.SensorType != model.SensorTypeIR {
-		http.Error(w, "device is not an IR device", http.StatusBadRequest)
-		return nil
-	}
-	return state.Device
-}
-
 func (c *IrController) loadSignal(w http.ResponseWriter, r *http.Request, device *model.Device) *model.IrSignal {
-	signalId, err := strconv.Atoi(chi.URLParam(r, "signalId"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	signalId, ok := urlInt(w, r, "signalId")
+	if !ok {
 		return nil
 	}
 	var signal model.IrSignal
@@ -107,7 +85,7 @@ func (c *IrController) loadSignal(w http.ResponseWriter, r *http.Request, device
 
 // Get returns all signals of the device grouped by group name.
 func (c *IrController) Get(w http.ResponseWriter, r *http.Request) {
-	device := c.irDevice(w, r)
+	device := irDevice(w, r, c.states)
 	if device == nil {
 		return
 	}
@@ -139,7 +117,7 @@ func (c *IrController) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *IrController) Create(w http.ResponseWriter, r *http.Request) {
-	device := c.irDevice(w, r)
+	device := irDevice(w, r, c.states)
 	if device == nil {
 		return
 	}
@@ -175,7 +153,7 @@ func (c *IrController) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *IrController) Update(w http.ResponseWriter, r *http.Request) {
-	device := c.irDevice(w, r)
+	device := irDevice(w, r, c.states)
 	if device == nil {
 		return
 	}
@@ -203,7 +181,7 @@ func (c *IrController) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *IrController) Delete(w http.ResponseWriter, r *http.Request) {
-	device := c.irDevice(w, r)
+	device := irDevice(w, r, c.states)
 	if device == nil {
 		return
 	}
@@ -224,7 +202,7 @@ func (c *IrController) Delete(w http.ResponseWriter, r *http.Request) {
 
 // Send transmits a stored signal through the device.
 func (c *IrController) Send(w http.ResponseWriter, r *http.Request) {
-	device := c.irDevice(w, r)
+	device := irDevice(w, r, c.states)
 	if device == nil {
 		return
 	}

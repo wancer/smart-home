@@ -16,17 +16,14 @@ import (
 )
 
 type Container struct {
-	MqttClient    driver.Client // interface
-	MqttPublisher *mqtt.Publisher
-	StateMonitor  *internal.StateMonitor
-	Firmware      *internal.FirmwareChecker
-	Telegram      *internal.TelegramNotifier
-	Notifier      *automation.Notifier
-	DeviceMap     *internal.DeviceMap
-	Web           *web.Server
-	Storage       *internal.Storage
-	EventHandler  *mqtt.EventParser
-	Auth          *privateauth.Auth
+	MqttClient   driver.Client // interface
+	StateMonitor *internal.StateMonitor
+	Firmware     *internal.FirmwareChecker
+	Telegram     *internal.TelegramNotifier
+	Notifier     *automation.Notifier
+	Web          *web.Server
+	Storage      *internal.Storage
+	Auth         *privateauth.Auth
 }
 
 func Build(cfg *config.Config) (*Container, error) {
@@ -44,7 +41,6 @@ func Build(cfg *config.Config) (*Container, error) {
 		return nil, err
 	}
 
-	deviceMap := internal.NewDeviceMap(devices)
 	states := internal.NewDeviceStateManager(devices)
 	storage, err := internal.NewStorage(db, cfg, states)
 	if err != nil {
@@ -70,7 +66,7 @@ func Build(cfg *config.Config) (*Container, error) {
 	irRunner := automation.NewIrRuleRunner(db, states, publisher)
 	profiles := internal.NewDeviceProfiles(db)
 	eventHandler := handler.NewEventHandler(dispatcher, states, publisher, storage, profiles, irRunner)
-	eventHandler.Subscribe(dispatcher, states)
+	eventHandler.Subscribe()
 
 	ws := web.NewWebSocketServer()
 	ws.Subscribe(dispatcher, states)
@@ -112,17 +108,14 @@ func Build(cfg *config.Config) (*Container, error) {
 	)
 
 	c := Container{
-		MqttClient:    mqttClient,
-		MqttPublisher: publisher,
-		StateMonitor:  stateMonitor,
-		Firmware:      firmwareChecker,
-		Telegram:      telegram,
-		Notifier:      notifier,
-		DeviceMap:     deviceMap,
-		Web:           webServer,
-		Storage:       storage,
-
-		Auth: auth,
+		MqttClient:   mqttClient,
+		StateMonitor: stateMonitor,
+		Firmware:     firmwareChecker,
+		Telegram:     telegram,
+		Notifier:     notifier,
+		Web:          webServer,
+		Storage:      storage,
+		Auth:         auth,
 	}
 
 	return &c, nil

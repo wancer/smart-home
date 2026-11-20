@@ -92,6 +92,18 @@ func (c *EventParser) parseStatus11(_ driver.Client, msg driver.Message) {
 	c.dispatcher.DispatchMqqt(parsed.StatusSTS, msg.Topic())
 }
 
+// parseStatus1 handles the STATUS1 reply (restart reason).
+func (c *EventParser) parseStatus1(_ driver.Client, msg driver.Message) {
+	var parsed event.Status1
+	if err := json.Unmarshal(msg.Payload(), &parsed); err != nil || parsed.StatusPRM == nil {
+		slog.Error("CANT_PARSE_MSG", "err", err, "topic", msg.Topic(), "payload", string(msg.Payload()))
+		return
+	}
+
+	slog.Debug("[event] status1", "event", string(msg.Payload()))
+	c.dispatcher.DispatchMqqt(&parsed, msg.Topic())
+}
+
 func (c *EventParser) parseFirmware(_ driver.Client, msg driver.Message) {
 	var parsed event.Status2
 	err := json.Unmarshal(msg.Payload(), &parsed)

@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 )
 
@@ -45,24 +44,6 @@ type IrRuleResponse struct {
 	Code    string        `json:"code"`
 	Enabled bool          `json:"enabled"`
 	Actions []IrActionDto `json:"actions"`
-}
-
-func (c *IrRulesController) irDevice(w http.ResponseWriter, r *http.Request) *model.Device {
-	deviceId, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return nil
-	}
-	state := c.states.GetById(uint(deviceId))
-	if state == nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		return nil
-	}
-	if state.Device.SensorType != model.SensorTypeIR {
-		http.Error(w, "device is not an IR device", http.StatusBadRequest)
-		return nil
-	}
-	return state.Device
 }
 
 // validate checks the request and returns a human-readable problem, or "".
@@ -134,7 +115,7 @@ func toRuleResponse(rule *model.IrRule, actions []model.IrRuleAction) IrRuleResp
 }
 
 func (c *IrRulesController) Get(w http.ResponseWriter, r *http.Request) {
-	device := c.irDevice(w, r)
+	device := irDevice(w, r, c.states)
 	if device == nil {
 		return
 	}
@@ -167,7 +148,7 @@ func (c *IrRulesController) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *IrRulesController) Create(w http.ResponseWriter, r *http.Request) {
-	device := c.irDevice(w, r)
+	device := irDevice(w, r, c.states)
 	if device == nil {
 		return
 	}
@@ -204,13 +185,12 @@ func (c *IrRulesController) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *IrRulesController) Update(w http.ResponseWriter, r *http.Request) {
-	device := c.irDevice(w, r)
+	device := irDevice(w, r, c.states)
 	if device == nil {
 		return
 	}
-	ruleId, err := strconv.Atoi(chi.URLParam(r, "ruleId"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	ruleId, ok := urlInt(w, r, "ruleId")
+	if !ok {
 		return
 	}
 	var rule model.IrRule
@@ -231,7 +211,7 @@ func (c *IrRulesController) Update(w http.ResponseWriter, r *http.Request) {
 
 	rule.Name, rule.Code, rule.Enabled = req.Name, req.Code, req.Enabled
 	rows := toActionRows(rule.ID, req.Actions)
-	err = c.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+	err := c.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Save(&rule).Error; err != nil {
 			return err
 		}
@@ -251,13 +231,12 @@ func (c *IrRulesController) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *IrRulesController) Delete(w http.ResponseWriter, r *http.Request) {
-	device := c.irDevice(w, r)
+	device := irDevice(w, r, c.states)
 	if device == nil {
 		return
 	}
-	ruleId, err := strconv.Atoi(chi.URLParam(r, "ruleId"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	ruleId, ok := urlInt(w, r, "ruleId")
+	if !ok {
 		return
 	}
 	res := c.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
@@ -286,7 +265,7 @@ func (c *IrRulesController) Delete(w http.ResponseWriter, r *http.Request) {
 // Received returns the latest codes seen by the device's receiver, newest first.
 // Press a remote button, then poll this to pick the code for a signal or rule.
 func (c *IrRulesController) Received(w http.ResponseWriter, r *http.Request) {
-	device := c.irDevice(w, r)
+	device := irDevice(w, r, c.states)
 	if device == nil {
 		return
 	}

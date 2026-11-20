@@ -12,8 +12,6 @@ import (
 	"smart-home/mqtt"
 	"strconv"
 	"time"
-
-	"github.com/go-chi/chi/v5"
 )
 
 type DeviceControlController struct {
@@ -73,21 +71,9 @@ func (c *DeviceControlController) resolveTimezone(state *internal.DeviceState) *
 	return c.timezones.GetByParameters(offset, stdFormatted, dstFormatted)
 }
 
-func (c *DeviceControlController) parseDeviceId(r *http.Request) (uint, error) {
-	id, err := strconv.Atoi(chi.URLParam(r, "deviceId"))
-	return uint(id), err
-}
-
 func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := c.parseDeviceId(r)
-	if err != nil {
-		slog.Error("[sensors][daily] error", "err", err)
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-	state := c.states.GetById(deviceId)
+	state := deviceState(w, r, c.states)
 	if state == nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 
@@ -105,14 +91,8 @@ func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *DeviceControlController) GetLed(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := c.parseDeviceId(r)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-	state := c.states.GetById(deviceId)
+	state := deviceState(w, r, c.states)
 	if state == nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 
@@ -136,20 +116,14 @@ func (c *DeviceControlController) GetLed(w http.ResponseWriter, r *http.Request)
 	time.Sleep(1500 * time.Millisecond)
 
 	cfg := newLedConfig(state)
-	slog.Info("[device][led-get] success", "deviceId", deviceId)
+	slog.Info("[device][led-get] success", "deviceId", state.Device.ID)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(cfg)
 }
 
 func (c *DeviceControlController) GetTiming(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := c.parseDeviceId(r)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-	state := c.states.GetById(deviceId)
+	state := deviceState(w, r, c.states)
 	if state == nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 
@@ -167,20 +141,14 @@ func (c *DeviceControlController) GetTiming(w http.ResponseWriter, r *http.Reque
 		OfflineTimeout: uint(internal.OfflineTimeout(state) / time.Second),
 	}
 
-	slog.Info("[device][timing-get] success", "deviceId", deviceId)
+	slog.Info("[device][timing-get] success", "deviceId", state.Device.ID)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(cfg)
 }
 
 func (c *DeviceControlController) GetHardware(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := c.parseDeviceId(r)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-	state := c.states.GetById(deviceId)
+	state := deviceState(w, r, c.states)
 	if state == nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 
@@ -196,7 +164,7 @@ func (c *DeviceControlController) GetHardware(w http.ResponseWriter, r *http.Req
 		Firmware:        NewFirmwareConfig(state.Device, c.firmware.Latest()),
 	}
 
-	slog.Info("[device][hardware-get] success", "deviceId", deviceId)
+	slog.Info("[device][hardware-get] success", "deviceId", state.Device.ID)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(cfg)
 }
@@ -217,25 +185,19 @@ func uptime(state *internal.DeviceState) *uint64 {
 
 // UpgradeFirmware only triggers the upgrade: the device downloads the image and restarts on its own.
 func (c *DeviceControlController) UpgradeFirmware(w http.ResponseWriter, r *http.Request) {
-	deviceId, err := c.parseDeviceId(r)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-	state := c.states.GetById(deviceId)
+	state := deviceState(w, r, c.states)
 	if state == nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 	if !state.Online {
-		slog.Warn("[device][firmware-upgrade] device is offline", "deviceId", deviceId)
+		slog.Warn("[device][firmware-upgrade] device is offline", "deviceId", state.Device.ID)
 		http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
 		return
 	}
 
 	c.pub.Upgrade(state.Device)
 
-	slog.Info("[device][firmware-upgrade] success", "deviceId", deviceId)
+	slog.Info("[device][firmware-upgrade] success", "deviceId", state.Device.ID)
 	w.WriteHeader(http.StatusOK)
 }
 

@@ -6,7 +6,7 @@ import (
 )
 
 func (h *EventHandler) HandleTimer(state *internal.DeviceState, e *event.Timer) {
-	if state == nil || e.N < 1 || e.N > 16 {
+	if e.N < 1 || e.N > 16 {
 		return
 	}
 	state.Config.Timers[e.N-1] = &internal.TimerConfig{

@@ -81,7 +81,7 @@ func (p *DeviceProfiles) Save(d *model.Device) {
 	now := time.Now().UTC()
 	d.ProfiledAt = &now
 	err := p.db.Model(d).
-		Select("Template", "Chip", "FirmwareVersion", "FirmwareBuiltAt", "Sensors", "SensorType", "ProfiledAt").
+		Select("Template", "Chip", "FirmwareVersion", "FirmwareBuiltAt", "FirmwareCore", "FirmwareSdk", "Sensors", "SensorType", "ProfiledAt").
 		Updates(d).Error
 	if err != nil {
 		slog.Error("[device][profile] save error", "deviceId", d.ID, "err", err)
