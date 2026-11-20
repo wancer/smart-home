@@ -5,6 +5,9 @@ const (
 	SensorTypeCo2       = "co2"
 	SensorTypeTempHumid = "t-h"
 	SensorTypeIR        = "ir" // infra-red remote: no sensors, no power control
+	// SensorTypeMulti is any mix of supported sensors (e.g. BME280 + INA219). Every
+	// device stores whatever its telemetry reports; the type picks the UI and metrics.
+	SensorTypeMulti = "multi"
 )
 
 type Device struct {

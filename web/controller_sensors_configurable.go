@@ -130,7 +130,7 @@ func (c *SensorsConfigurableController) rawRecords(
 			i++
 			internal.MergeInto(&row, &rows[i])
 		}
-		records = append(records, newDeviceSensorEvent(row.BucketTime, &row, state.Device.SensorType))
+		records = append(records, newDeviceSensorEvent(row.BucketTime, &row))
 	}
 	return records, nil
 }
@@ -186,7 +186,7 @@ func (c *SensorsConfigurableController) buildRecords(
 	records := make([]DeviceSensorEvent, len(points))
 	for i, point := range points {
 		at := from.Add(time.Duration(i) * scale)
-		records[i] = newDeviceSensorEvent(at, point, state.Device.SensorType)
+		records[i] = newDeviceSensorEvent(at, point)
 	}
 	return records, nil
 }
@@ -223,44 +223,48 @@ func coarsestBucket(rows []model.SensorAggregate) time.Duration {
 }
 
 // newDeviceSensorEvent maps a merged step to a chart point; agg is nil for an empty step.
-func newDeviceSensorEvent(at time.Time, agg *model.SensorAggregate, sensorType string) DeviceSensorEvent {
+func newDeviceSensorEvent(at time.Time, agg *model.SensorAggregate) DeviceSensorEvent {
 	record := DeviceSensorEvent{Time: at.Unix()}
 	if agg == nil {
 		return record
 	}
 
-	switch sensorType {
-	case model.SensorTypeEnergy:
-		record.PowerConsumed = agg.PowerConsumed
-		if record.PowerConsumed == nil {
-			record.PowerConsumed = new(float32(0))
-		}
-		record.PowerAvg = toUint(agg.PowerAvg)
-		record.PowerMin = toUint(agg.PowerMin)
-		record.PowerMax = toUint(agg.PowerMax)
-		record.CurrentAvg = agg.CurrentAvg
-		record.CurrentMin = agg.CurrentMin
-		record.CurrentMax = agg.CurrentMax
-		record.VoltageAvg = toUint(agg.VoltageAvg)
-		record.VoltageMin = toUint(agg.VoltageMin)
-		record.VoltageMax = toUint(agg.VoltageMax)
-	case model.SensorTypeCo2:
-		record.CO2Avg = toUint(agg.CO2Avg)
-		record.CO2Min = toUint(agg.CO2Min)
-		record.CO2Max = toUint(agg.CO2Max)
-		fallthrough
-	case model.SensorTypeTempHumid:
-		record.TemperatureAvg = agg.TemperatureAvg
-		record.TemperatureMin = agg.TemperatureMin
-		record.TemperatureMax = agg.TemperatureMax
-		record.HumidityAvg = agg.HumidityAvg
-		record.HumidityMin = agg.HumidityMin
-		record.HumidityMax = agg.HumidityMax
-	case model.SensorTypeIR:
-		// no sensors
-	default:
-		slog.Error("UNKOWN_TYPE: " + sensorType)
+	record.PowerConsumed = agg.PowerConsumed
+	if record.PowerConsumed == nil && agg.PowerAvg != nil {
+		record.PowerConsumed = new(float32(0))
 	}
+	record.PowerAvg = toUint(agg.PowerAvg)
+	record.PowerMin = toUint(agg.PowerMin)
+	record.PowerMax = toUint(agg.PowerMax)
+	record.CurrentAvg = agg.CurrentAvg
+	record.CurrentMin = agg.CurrentMin
+	record.CurrentMax = agg.CurrentMax
+	record.VoltageAvg = toUint(agg.VoltageAvg)
+	record.VoltageMin = toUint(agg.VoltageMin)
+	record.VoltageMax = toUint(agg.VoltageMax)
+
+	record.CO2Avg = toUint(agg.CO2Avg)
+	record.CO2Min = toUint(agg.CO2Min)
+	record.CO2Max = toUint(agg.CO2Max)
+	record.TemperatureAvg = agg.TemperatureAvg
+	record.TemperatureMin = agg.TemperatureMin
+	record.TemperatureMax = agg.TemperatureMax
+	record.HumidityAvg = agg.HumidityAvg
+	record.HumidityMin = agg.HumidityMin
+	record.HumidityMax = agg.HumidityMax
+	record.PressureAvg = agg.PressureAvg
+	record.PressureMin = agg.PressureMin
+	record.PressureMax = agg.PressureMax
+
+	record.DcVoltageAvg = agg.DcVoltageAvg
+	record.DcVoltageMin = agg.DcVoltageMin
+	record.DcVoltageMax = agg.DcVoltageMax
+	record.DcCurrentAvg = agg.DcCurrentAvg
+	record.DcCurrentMin = agg.DcCurrentMin
+	record.DcCurrentMax = agg.DcCurrentMax
+	record.DcPowerAvg = agg.DcPowerAvg
+	record.DcPowerMin = agg.DcPowerMin
+	record.DcPowerMax = agg.DcPowerMax
 
 	record.ChipTemperatureAvg = agg.ChipTemperatureAvg
 	return record

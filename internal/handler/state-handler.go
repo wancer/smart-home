@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"log/slog"
 	"smart-home/event"
 	"smart-home/internal"
 	"smart-home/model"
@@ -12,25 +11,12 @@ func (h *EventHandler) HandleState(state *internal.DeviceState, e *event.Status1
 	now := time.Now()
 	state.ChipTemperature = e.StatusSNS.ChipTemperature()
 
-	switch state.Device.SensorType {
-	case model.SensorTypeEnergy:
-		state.Current = &e.StatusSNS.Energy.Current
-		state.Power = &e.StatusSNS.Energy.Power
-		state.Voltage = &e.StatusSNS.Energy.Voltage
-		state.Today = &e.StatusSNS.Energy.Today
+	if state.Device.SensorType == model.SensorTypeIR {
+		return // no sensors
+	}
+	readings := e.StatusSNS.Readings()
+	state.SetReadings(&readings)
+	if e.StatusSNS.Energy != nil {
 		state.LastUpdate = &now
-	case model.SensorTypeCo2:
-		state.CO2 = &e.StatusSNS.Co2.CO2
-		state.Temperature = &e.StatusSNS.Co2.Temperature
-		state.Humidity = &e.StatusSNS.Co2.Humidity
-		state.DewPoint = &e.StatusSNS.Co2.DewPoint
-	case model.SensorTypeTempHumid:
-		state.Temperature = &e.StatusSNS.TempHum.Temperature
-		state.Humidity = &e.StatusSNS.TempHum.Humidity
-		state.DewPoint = &e.StatusSNS.TempHum.DewPoint
-	case model.SensorTypeIR:
-		// no sensors
-	default:
-		slog.Error("UNKOWN_TYPE: " + state.Device.SensorType)
 	}
 }

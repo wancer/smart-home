@@ -52,6 +52,18 @@ func readingAggregate(r *model.SensorEvent) *model.SensorAggregate {
 	if r.DewPoint != nil {
 		agg.DewPointAvg = new(*r.DewPoint)
 	}
+	if r.Pressure != nil {
+		agg.PressureAvg, agg.PressureMin, agg.PressureMax = triple(*r.Pressure)
+	}
+	if r.DcVoltage != nil {
+		agg.DcVoltageAvg, agg.DcVoltageMin, agg.DcVoltageMax = triple(*r.DcVoltage)
+	}
+	if r.DcCurrent != nil {
+		agg.DcCurrentAvg, agg.DcCurrentMin, agg.DcCurrentMax = triple(*r.DcCurrent)
+	}
+	if r.DcPower != nil {
+		agg.DcPowerAvg, agg.DcPowerMin, agg.DcPowerMax = triple(*r.DcPower)
+	}
 	if r.ChipTemperature != nil {
 		agg.ChipTemperatureAvg = new(*r.ChipTemperature)
 	}
@@ -110,6 +122,19 @@ func MergeInto(dst, src *model.SensorAggregate) {
 	dst.HumidityMin = mergeMin(dst.HumidityMin, src.HumidityMin)
 	dst.HumidityMax = mergeMax(dst.HumidityMax, src.HumidityMax)
 	dst.DewPointAvg = mergeAvg(dst.DewPointAvg, n1, src.DewPointAvg, n2)
+	dst.PressureAvg = mergeAvg(dst.PressureAvg, n1, src.PressureAvg, n2)
+	dst.PressureMin = mergeMin(dst.PressureMin, src.PressureMin)
+	dst.PressureMax = mergeMax(dst.PressureMax, src.PressureMax)
+
+	dst.DcVoltageAvg = mergeAvg(dst.DcVoltageAvg, n1, src.DcVoltageAvg, n2)
+	dst.DcVoltageMin = mergeMin(dst.DcVoltageMin, src.DcVoltageMin)
+	dst.DcVoltageMax = mergeMax(dst.DcVoltageMax, src.DcVoltageMax)
+	dst.DcCurrentAvg = mergeAvg(dst.DcCurrentAvg, n1, src.DcCurrentAvg, n2)
+	dst.DcCurrentMin = mergeMin(dst.DcCurrentMin, src.DcCurrentMin)
+	dst.DcCurrentMax = mergeMax(dst.DcCurrentMax, src.DcCurrentMax)
+	dst.DcPowerAvg = mergeAvg(dst.DcPowerAvg, n1, src.DcPowerAvg, n2)
+	dst.DcPowerMin = mergeMin(dst.DcPowerMin, src.DcPowerMin)
+	dst.DcPowerMax = mergeMax(dst.DcPowerMax, src.DcPowerMax)
 
 	dst.ChipTemperatureAvg = mergeAvg(dst.ChipTemperatureAvg, n1, src.ChipTemperatureAvg, n2)
 

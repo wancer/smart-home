@@ -30,27 +30,11 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 		h.dispatcher.Dispatch(&event.DeviceAvailability{DeviceId: state.Device.ID, Online: true})
 	}
 
-	switch state.Device.SensorType {
-	case model.SensorTypeEnergy:
+	if e.Energy != nil {
 		h.storage.StoreDaily(e, state.Device.ID)
-
-		state.Current = &e.Energy.Current
-		state.Power = &e.Energy.Power
-		state.Voltage = &e.Energy.Voltage
-		state.Today = &e.Energy.Today
-	case model.SensorTypeCo2:
-		state.CO2 = &e.Co2.CO2
-		state.Temperature = &e.Co2.Temperature
-		state.Humidity = &e.Co2.Humidity
-		state.DewPoint = &e.Co2.DewPoint
-	case model.SensorTypeTempHumid:
-		state.Temperature = &e.TempHum.Temperature
-		state.Humidity = &e.TempHum.Humidity
-		state.DewPoint = &e.TempHum.DewPoint
-	default:
-		slog.Error("UNKOWN_TYPE: " + state.Device.SensorType)
-		return
 	}
+	readings := e.Readings()
+	state.SetReadings(&readings)
 
 	h.dispatcher.Dispatch(&event.SensorsUpdated{DeviceId: state.Device.ID})
 }
@@ -87,26 +71,11 @@ func toModel(e *event.SensorEvent, device *model.Device, now *time.Time) *model.
 		r.ChipTemperature = e.ChipTemperature()
 	}
 
-	switch device.SensorType {
-	case model.SensorTypeEnergy:
-		r.Period = &e.Energy.Period
-		r.Power = &e.Energy.Power
-		r.ApparentPower = &e.Energy.ApparentPower
-		r.ReactivePower = &e.Energy.ReactivePower
-		r.Voltage = &e.Energy.Voltage
-		r.Current = &e.Energy.Current
-	case model.SensorTypeCo2:
-		r.CO2 = &e.Co2.CO2
-		r.Temperature = &e.Co2.Temperature
-		r.Humidity = &e.Co2.Humidity
-		r.DewPoint = &e.Co2.DewPoint
-	case model.SensorTypeTempHumid:
-		r.Temperature = &e.TempHum.Temperature
-		r.Humidity = &e.TempHum.Humidity
-		r.DewPoint = &e.TempHum.DewPoint
-	default:
-		slog.Error("UNKOWN_TYPE: " + device.SensorType)
-	}
+	readings := e.Readings()
+	r.Period, r.Power, r.ApparentPower, r.ReactivePower = readings.Period, readings.Power, readings.ApparentPower, readings.ReactivePower
+	r.Voltage, r.Current = readings.Voltage, readings.Current
+	r.CO2, r.Temperature, r.Humidity, r.DewPoint, r.Pressure = readings.CO2, readings.Temperature, readings.Humidity, readings.DewPoint, readings.Pressure
+	r.DcVoltage, r.DcCurrent, r.DcPower = readings.DcVoltage, readings.DcCurrent, readings.DcPower
 
 	return r
 }

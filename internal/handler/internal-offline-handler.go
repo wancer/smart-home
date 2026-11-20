@@ -11,14 +11,9 @@ func (h *EventHandler) InternalHandleOffline(e *event.InternalOfflineEvent) {
 	state.Online = false
 
 	state.On = nil
-	state.Current = nil
-	state.Voltage = nil
-	state.Power = nil
-
-	state.CO2 = nil
-	state.Temperature = nil
-	state.Humidity = nil
-	state.DewPoint = nil
+	today := state.Today // kept: it's the daily total, not a live reading
+	state.ClearReadings()
+	state.Today = today
 
 	state.ChipTemperature = nil
 	state.LastTelemetry = nil

@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"smart-home/event"
 	"smart-home/model"
 	"strings"
 	"time"
@@ -78,12 +79,29 @@ type DeviceState struct {
 	Temperature *float32
 	Humidity    *float32
 	DewPoint    *float32
+	Pressure    *float32 // hPa
+
+	DcVoltage *float32
+	DcCurrent *float32
+	DcPower   *float32
 
 	ChipTemperature *float32   // ESP32 internal temperature (SetOption146 1)
 	LastTelemetry   *time.Time // last tele/SENSOR message; IR availability falls back to LWT while nil
 
 	Uptime  *DeviceUptime // from tele/STATE or STATUS11
 	LoadAvg *uint         // Tasmota main loop load, %
+}
+
+// SetReadings replaces the live sensor values with the ones a telemetry message reported.
+func (s *DeviceState) SetReadings(r *event.Readings) {
+	s.Power, s.Current, s.Voltage, s.Today = r.Power, r.Current, r.Voltage, r.Today
+	s.CO2, s.Temperature, s.Humidity, s.DewPoint, s.Pressure = r.CO2, r.Temperature, r.Humidity, r.DewPoint, r.Pressure
+	s.DcVoltage, s.DcCurrent, s.DcPower = r.DcVoltage, r.DcCurrent, r.DcPower
+}
+
+// ClearReadings forgets the live sensor values, e.g. when the device goes offline.
+func (s *DeviceState) ClearReadings() {
+	s.SetReadings(&event.Readings{})
 }
 
 type DeviceUptime struct {

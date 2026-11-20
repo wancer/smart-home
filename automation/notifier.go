@@ -304,6 +304,22 @@ func metricValue(state *internal.DeviceState, metric string) (float64, bool) {
 		if state.Humidity != nil {
 			return float64(*state.Humidity), true
 		}
+	case model.MetricPressure:
+		if state.Pressure != nil {
+			return float64(*state.Pressure), true
+		}
+	case model.MetricDcVoltage:
+		if state.DcVoltage != nil {
+			return float64(*state.DcVoltage), true
+		}
+	case model.MetricDcCurrent:
+		if state.DcCurrent != nil {
+			return float64(*state.DcCurrent), true
+		}
+	case model.MetricDcPower:
+		if state.DcPower != nil {
+			return float64(*state.DcPower), true
+		}
 	}
 	return 0, false
 }
@@ -318,6 +334,10 @@ var metricUnits = map[string]struct {
 	model.MetricCO2:         {" ppm", 0},
 	model.MetricTemperature: {"°C", 1},
 	model.MetricHumidity:    {"%", 1},
+	model.MetricPressure:    {" hPa", 1},
+	model.MetricDcVoltage:   {" V", 2},
+	model.MetricDcCurrent:   {" A", 3},
+	model.MetricDcPower:     {" W", 2},
 }
 
 func formatMetric(metric string, v float64) string {

@@ -46,6 +46,21 @@ type Co2 struct {
 	DewPoint    float32 `json:"DewPoint"`
 }
 
+// BME280 is a temperature / humidity / barometric pressure sensor.
+type BME280 struct {
+	Temperature float32 `json:"Temperature"`
+	Humidity    float32 `json:"Humidity"`
+	DewPoint    float32 `json:"DewPoint"`
+	Pressure    float32 `json:"Pressure"` // hPa
+}
+
+// INA219 is a DC voltage / current / power monitor.
+type INA219 struct {
+	Voltage float32 `json:"Voltage"` // V
+	Current float32 `json:"Current"` // A
+	Power   float32 `json:"Power"`   // W
+}
+
 // Chip is the ESP32 internal temperature sensor, reported with SetOption146 1.
 type Chip struct {
 	Temperature float32 `json:"Temperature"`
@@ -56,7 +71,68 @@ type SensorEvent struct {
 	Energy  *Energy       `json:"ENERGY"`
 	Co2     *Co2          `json:"SCD40"`
 	TempHum *TempHumidity `json:"SHT4X"`
+	BME280  *BME280       `json:"BME280"`
+	INA219  *INA219       `json:"INA219"`
 	Chip    *Chip         `json:"ESP32"`
+}
+
+// Readings are the values of every known sensor in a message, whatever the device's
+// sensor type; nil = not reported. When several sensors report the same quantity, the
+// dedicated one wins: SHT4X, then BME280, then SCD40.
+type Readings struct {
+	// AC energy meter
+	Period        *uint
+	Power         *uint
+	ApparentPower *uint
+	ReactivePower *uint
+	Voltage       *uint
+	Current       *float32
+	Today         *float32 // kWh
+	Yesterday     *float32 // kWh
+
+	CO2         *uint
+	Temperature *float32
+	Humidity    *float32
+	DewPoint    *float32
+	Pressure    *float32 // hPa
+
+	// DC power monitor
+	DcVoltage *float32
+	DcCurrent *float32
+	DcPower   *float32
+}
+
+func (e *SensorEvent) Readings() Readings {
+	var r Readings
+	if e == nil {
+		return r
+	}
+	if en := e.Energy; en != nil {
+		r.Period, r.Power = new(en.Period), new(en.Power)
+		r.ApparentPower, r.ReactivePower = new(en.ApparentPower), new(en.ReactivePower)
+		r.Voltage, r.Current = new(en.Voltage), new(en.Current)
+		r.Today, r.Yesterday = new(en.Today), new(en.Yesterday)
+	}
+	if b := e.BME280; b != nil {
+		r.Pressure = new(b.Pressure)
+	}
+	if i := e.INA219; i != nil {
+		r.DcVoltage, r.DcCurrent, r.DcPower = new(i.Voltage), new(i.Current), new(i.Power)
+	}
+	if c := e.Co2; c != nil {
+		r.CO2 = new(c.CO2)
+	}
+
+	// climate, in order of precedence
+	switch {
+	case e.TempHum != nil:
+		r.Temperature, r.Humidity, r.DewPoint = new(e.TempHum.Temperature), new(e.TempHum.Humidity), new(e.TempHum.DewPoint)
+	case e.BME280 != nil:
+		r.Temperature, r.Humidity, r.DewPoint = new(e.BME280.Temperature), new(e.BME280.Humidity), new(e.BME280.DewPoint)
+	case e.Co2 != nil:
+		r.Temperature, r.Humidity, r.DewPoint = new(e.Co2.Temperature), new(e.Co2.Humidity), new(e.Co2.DewPoint)
+	}
+	return r
 }
 
 // ChipTemperature returns the ESP32 chip temperature, nil if the device doesn't report it.
