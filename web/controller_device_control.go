@@ -323,11 +323,11 @@ func (c *DeviceControlController) handle(r *DeviceControlRequest, d *internal.De
 	return nil
 }
 
-// supportsParameter: calibration is for energy plugs only, power control for devices with a relay.
+// supportsParameter: calibration is for devices with an energy meter only, power control for devices with a relay.
 func supportsParameter(state *internal.DeviceState, parameter string) bool {
 	switch parameter {
 	case "voltage", "power":
-		return state.Device.SensorType == model.SensorTypeEnergy
+		return state.HasEnergyMeter()
 	case "on-off":
 		return state.CanToggle()
 	}

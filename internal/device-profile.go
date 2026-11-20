@@ -11,8 +11,9 @@ import (
 )
 
 // sensorTypePriority: when a device shows several kinds, the higher one wins
-// (CO₂ sensor > T-H sensor > IR remote > power plug > other).
+// (multi-sensor > CO₂ sensor > T-H sensor > IR remote > power plug > other).
 var sensorTypePriority = map[string]int{
+	model.SensorTypeMulti:     5,
 	model.SensorTypeOther:     0,
 	model.SensorTypeEnergy:    1,
 	model.SensorTypeIR:        2,
@@ -24,6 +25,8 @@ var sensorTypePriority = map[string]int{
 // (either may be nil).
 func DetectSensorType(gpio []int, sns *event.SensorEvent) string {
 	switch {
+	case isMultiSensor(sns):
+		return model.SensorTypeMulti
 	case sns != nil && sns.Co2 != nil:
 		return model.SensorTypeCo2
 	case sns != nil && sns.TempHum != nil:
@@ -34,6 +37,15 @@ func DetectSensorType(gpio []int, sns *event.SensorEvent) string {
 		return model.SensorTypeEnergy
 	}
 	return model.SensorTypeOther
+}
+
+// isMultiSensor: a sensor only the multi type shows (pressure, DC monitor), or an energy
+// meter together with a climate sensor.
+func isMultiSensor(sns *event.SensorEvent) bool {
+	if sns == nil {
+		return false
+	}
+	return sns.Baro != nil || sns.Dc != nil || (sns.Energy != nil && (sns.Co2 != nil || sns.TempHum != nil))
 }
 
 func hasIr(gpio []int) bool {
@@ -57,8 +69,15 @@ func HasSensorData(sensorType string, sns *event.SensorEvent) bool {
 		return sns.Co2 != nil
 	case model.SensorTypeTempHumid:
 		return sns.TempHum != nil
+	case model.SensorTypeMulti:
+		return sns.Energy != nil || sns.Co2 != nil || sns.TempHum != nil || sns.Baro != nil || sns.Dc != nil
 	}
 	return false
+}
+
+// HasEnergyMeter: the device has an AC energy meter (power/voltage calibration, daily kWh).
+func (s *DeviceState) HasEnergyMeter() bool {
+	return s.Device.SensorType == model.SensorTypeEnergy || slices.Contains(s.Device.Sensors, "ENERGY")
 }
 
 // HasChipTemperature: the device reports the ESP32 internal temperature (SetOption146 1),

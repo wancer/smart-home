@@ -1,13 +1,13 @@
 package web
 
 import (
-	"log/slog"
 	"smart-home/event"
 	"smart-home/internal"
 	"smart-home/model"
 	"time"
 )
 
+// SensorEvent is a live or stored reading. Fields the device doesn't report are null.
 type SensorEvent struct {
 	DeviceId   uint   `json:"deviceId"`
 	Time       int64  `json:"time"`
@@ -20,105 +20,88 @@ type SensorEvent struct {
 	CO2Dioxide  *uint    `json:"co2"`
 	Temperature *float32 `json:"temperature"`
 	Humidity    *float32 `json:"humidity"`
+	Pressure    *float32 `json:"pressure"` // hPa
+
+	DcVoltage *float32 `json:"dcVoltage"`
+	DcCurrent *float32 `json:"dcCurrent"`
+	DcPower   *float32 `json:"dcPower"`
 
 	ChipTemperature *float32 `json:"chipTemperature"`
 }
 
 func NewSensorFromEvent(e *event.SensorEvent, d *model.Device) *SensorEvent {
-	normalized := &SensorEvent{
+	r := e.Readings()
+	return &SensorEvent{
 		DeviceId:   d.ID,
 		Time:       time.Now().Unix(),
 		DeviceTime: time.Time(e.Time).Format(time.DateTime),
 
+		Power:   r.Power,
+		Current: r.Current,
+		Voltage: r.Voltage,
+
+		CO2Dioxide:  r.CO2,
+		Temperature: r.Temperature,
+		Humidity:    r.Humidity,
+		Pressure:    r.Pressure,
+
+		DcVoltage: r.DcVoltage,
+		DcCurrent: r.DcCurrent,
+		DcPower:   r.DcPower,
+
 		ChipTemperature: e.ChipTemperature(),
 	}
-
-	switch d.SensorType {
-	case model.SensorTypeEnergy:
-		normalized.Power = &e.Energy.Power
-		normalized.Current = &e.Energy.Current
-		normalized.Voltage = &e.Energy.Voltage
-	case model.SensorTypeCo2:
-		normalized.CO2Dioxide = &e.Co2.CO2
-		normalized.Temperature = &e.Co2.Temperature
-		normalized.Humidity = &e.Co2.Humidity
-	case model.SensorTypeTempHumid:
-		normalized.Temperature = &e.TempHum.Temperature
-		normalized.Humidity = &e.TempHum.Humidity
-	case model.SensorTypeIR, model.SensorTypeOther:
-		// no sensors
-	default:
-		slog.Error("UNKOWN_TYPE: " + d.SensorType)
-	}
-
-	return normalized
 }
 
-func NewSensorEvent(dbRecord *model.SensorEvent, d *model.Device) *SensorEvent {
-	normalized := &SensorEvent{
+func NewSensorEvent(dbRecord *model.SensorEvent) *SensorEvent {
+	return &SensorEvent{
 		DeviceId: dbRecord.DeviceId,
 		Time:     dbRecord.RealTime.Unix(),
 
+		Power:   dbRecord.Power,
+		Current: dbRecord.Current,
+		Voltage: dbRecord.Voltage,
+
+		CO2Dioxide:  dbRecord.CO2,
+		Temperature: dbRecord.Temperature,
+		Humidity:    dbRecord.Humidity,
+		Pressure:    dbRecord.Pressure,
+
+		DcVoltage: dbRecord.DcVoltage,
+		DcCurrent: dbRecord.DcCurrent,
+		DcPower:   dbRecord.DcPower,
+
 		ChipTemperature: dbRecord.ChipTemperature,
 	}
-
-	switch d.SensorType {
-	case model.SensorTypeEnergy:
-		normalized.Power = dbRecord.Power
-		normalized.Current = dbRecord.Current
-		normalized.Voltage = dbRecord.Voltage
-	case model.SensorTypeCo2:
-		normalized.CO2Dioxide = dbRecord.CO2
-		normalized.Temperature = dbRecord.Temperature
-		normalized.Humidity = dbRecord.Humidity
-	case model.SensorTypeTempHumid:
-		normalized.Temperature = dbRecord.Temperature
-		normalized.Humidity = dbRecord.Humidity
-	case model.SensorTypeIR, model.SensorTypeOther:
-		// no sensors
-	default:
-		slog.Error("UNKOWN_TYPE: " + d.SensorType)
-	}
-
-	return normalized
 }
 
-func NewSensorEventFromAggregate(agg *model.SensorAggregate, d *model.Device) *SensorEvent {
-	normalized := &SensorEvent{
+func NewSensorEventFromAggregate(agg *model.SensorAggregate) *SensorEvent {
+	return &SensorEvent{
 		DeviceId: agg.DeviceId,
 		Time:     agg.BucketTime.Unix(),
 
+		Power:   truncUint(agg.PowerAvg),
+		Current: agg.CurrentAvg,
+		Voltage: truncUint(agg.VoltageAvg),
+
+		CO2Dioxide:  truncUint(agg.CO2Avg),
+		Temperature: agg.TemperatureAvg,
+		Humidity:    agg.HumidityAvg,
+		Pressure:    agg.PressureAvg,
+
+		DcVoltage: agg.DcVoltageAvg,
+		DcCurrent: agg.DcCurrentAvg,
+		DcPower:   agg.DcPowerAvg,
+
 		ChipTemperature: agg.ChipTemperatureAvg,
 	}
+}
 
-	switch d.SensorType {
-	case model.SensorTypeEnergy:
-		if agg.PowerAvg != nil {
-			p := uint(*agg.PowerAvg)
-			normalized.Power = &p
-		}
-		normalized.Current = agg.CurrentAvg
-		if agg.VoltageAvg != nil {
-			v := uint(*agg.VoltageAvg)
-			normalized.Voltage = &v
-		}
-	case model.SensorTypeCo2:
-		if agg.CO2Avg != nil {
-			v := uint(*agg.CO2Avg)
-			normalized.CO2Dioxide = &v
-		}
-		normalized.Temperature = agg.TemperatureAvg
-		normalized.Humidity = agg.HumidityAvg
-	case model.SensorTypeTempHumid:
-		normalized.Temperature = agg.TemperatureAvg
-		normalized.Humidity = agg.HumidityAvg
-	case model.SensorTypeIR, model.SensorTypeOther:
-		// no sensors
-	default:
-		slog.Error("UNKOWN_TYPE: " + d.SensorType)
+func truncUint(v *float32) *uint {
+	if v == nil {
+		return nil
 	}
-
-	return normalized
+	return new(uint(*v))
 }
 
 func NewDeviceResponse(state *internal.DeviceState) *DeviceResponse {
@@ -142,6 +125,11 @@ func NewDeviceResponse(state *internal.DeviceState) *DeviceResponse {
 			CO2:         state.CO2,
 			Temperature: state.Temperature,
 			Humidity:    state.Humidity,
+			Pressure:    state.Pressure,
+
+			DcVoltage: state.DcVoltage,
+			DcCurrent: state.DcCurrent,
+			DcPower:   state.DcPower,
 
 			ChipTemperature: state.ChipTemperature,
 		},
@@ -159,6 +147,11 @@ type DeviceState struct {
 	CO2         *uint    `json:"co2"`
 	Temperature *float32 `json:"temperature"`
 	Humidity    *float32 `json:"humidity"`
+	Pressure    *float32 `json:"pressure"`
+
+	DcVoltage *float32 `json:"dcVoltage"`
+	DcCurrent *float32 `json:"dcCurrent"`
+	DcPower   *float32 `json:"dcPower"`
 
 	ChipTemperature *float32 `json:"chipTemperature"`
 }
@@ -168,7 +161,7 @@ type DeviceResponse struct {
 	Name           string       `json:"name"`
 	Topic          string       `json:"topic"`
 	Enabled        bool         `json:"enabled"`
-	SensorType     string         `json:"sensorType"`     // detected: energy, co2, t-h, ir, other
+	SensorType     string         `json:"sensorType"`     // detected: energy, co2, t-h, multi, ir, other
 	SupportsToggle bool           `json:"supportsToggle"` // has a relay (template), not IR
 	Profile        *DeviceProfile `json:"profile"`
 	OfflineTimeout uint         `json:"offlineTimeout"` // seconds, 0 = auto
@@ -217,6 +210,19 @@ type DeviceSensorEvent struct {
 	HumidityAvg    *float32 `json:"humidityAvg"`
 	HumidityMin    *float32 `json:"humidityMin"`
 	HumidityMax    *float32 `json:"humidityMax"`
+	PressureAvg    *float32 `json:"pressureAvg"`
+	PressureMin    *float32 `json:"pressureMin"`
+	PressureMax    *float32 `json:"pressureMax"`
+
+	DcVoltageAvg *float32 `json:"dcVoltageAvg"`
+	DcVoltageMin *float32 `json:"dcVoltageMin"`
+	DcVoltageMax *float32 `json:"dcVoltageMax"`
+	DcCurrentAvg *float32 `json:"dcCurrentAvg"`
+	DcCurrentMin *float32 `json:"dcCurrentMin"`
+	DcCurrentMax *float32 `json:"dcCurrentMax"`
+	DcPowerAvg   *float32 `json:"dcPowerAvg"`
+	DcPowerMin   *float32 `json:"dcPowerMin"`
+	DcPowerMax   *float32 `json:"dcPowerMax"`
 
 	ChipTemperatureAvg *float32 `json:"chipTemperatureAvg"`
 }
@@ -256,7 +262,7 @@ func newDeviceProfile(state *internal.DeviceState) *DeviceProfile {
 		Sensors:  d.Sensors,
 		Features: DeviceFeatures{
 			Ir:       d.SensorType == model.SensorTypeIR,
-			Energy:   d.SensorType == model.SensorTypeEnergy,
+			Energy:   state.HasEnergyMeter(),
 			ChipTemp: state.HasChipTemperature(),
 		},
 	}

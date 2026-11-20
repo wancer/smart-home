@@ -51,6 +51,18 @@ type Co2 struct {
 	DewPoint    float32 `json:"DewPoint"`
 }
 
+// Barometer is the pressure of a BME280 / BMP280 / ... (its temperature and humidity go to TempHum).
+type Barometer struct {
+	Pressure float32 `json:"Pressure"` // hPa
+}
+
+// DcMonitor is a DC voltage / current / power monitor (INA219, INA226, ...).
+type DcMonitor struct {
+	Voltage float32 `json:"Voltage"` // V
+	Current float32 `json:"Current"` // A
+	Power   float32 `json:"Power"`   // W
+}
+
 // Chip is the ESP32 internal temperature sensor, reported with SetOption146 1.
 type Chip struct {
 	Temperature float32 `json:"Temperature"`
@@ -58,12 +70,16 @@ type Chip struct {
 
 // SensorEvent is a tele/SENSOR (or STATUS10 StatusSNS) payload. Sensors are recognised by their
 // fields, not their names: the first one with CarbonDioxide is Co2 (SCD40, MHZ19B, ...), the
-// first other one with Temperature and Humidity is TempHum (SHT4X, SHT3X, AM2301, BME280, ...).
+// first other one with Temperature and Humidity is TempHum (SHT4X, SHT3X, AM2301, BME280, ...),
+// the first one with Pressure is Baro (BME280, BMP280, ...) and the first one with Voltage and
+// Current is Dc (INA219, ...).
 type SensorEvent struct {
 	Time    TasmotaTime
 	Energy  *Energy
 	Co2     *Co2
 	TempHum *TempHumidity
+	Baro    *Barometer
+	Dc      *DcMonitor
 	Chip    *Chip
 
 	Sensors []string // names of all sensor objects, sorted (ENERGY, SCD40, ESP32, ...)
@@ -107,6 +123,10 @@ func (e *SensorEvent) UnmarshalJSON(in []byte) error {
 			Temperature   *float32
 			Humidity      *float32
 			DewPoint      *float32
+			Pressure      *float32
+			Voltage       *float32
+			Current       *float32
+			Power         *float32
 		}
 		if err := json.Unmarshal(value, &probe); err != nil {
 			continue // not a sensor we know
@@ -118,6 +138,12 @@ func (e *SensorEvent) UnmarshalJSON(in []byte) error {
 		case probe.CarbonDioxide == nil && probe.Temperature != nil && probe.Humidity != nil && e.TempHum == nil:
 			e.TempHum = &TempHumidity{Temperature: *probe.Temperature, Humidity: *probe.Humidity, DewPoint: deref(probe.DewPoint)}
 		}
+		if probe.Pressure != nil && e.Baro == nil {
+			e.Baro = &Barometer{Pressure: *probe.Pressure}
+		}
+		if probe.Voltage != nil && probe.Current != nil && e.Dc == nil {
+			e.Dc = &DcMonitor{Voltage: *probe.Voltage, Current: *probe.Current, Power: deref(probe.Power)}
+		}
 	}
 	return nil
 }
@@ -127,6 +153,63 @@ func deref(v *float32) float32 {
 		return 0
 	}
 	return *v
+}
+
+// Readings are the values of every known sensor in a message, whatever the device's
+// sensor type; nil = not reported. Temperature / humidity come from TempHum (a dedicated
+// T-H sensor, including BME280), else from the CO2 sensor.
+type Readings struct {
+	// AC energy meter
+	Period        *uint
+	Power         *uint
+	ApparentPower *uint
+	ReactivePower *uint
+	Voltage       *uint
+	Current       *float32
+	Today         *float32 // kWh
+	Yesterday     *float32 // kWh
+
+	CO2         *uint
+	Temperature *float32
+	Humidity    *float32
+	DewPoint    *float32
+	Pressure    *float32 // hPa
+
+	// DC power monitor
+	DcVoltage *float32
+	DcCurrent *float32
+	DcPower   *float32
+}
+
+func (e *SensorEvent) Readings() Readings {
+	var r Readings
+	if e == nil {
+		return r
+	}
+	if en := e.Energy; en != nil {
+		r.Period, r.Power = new(en.Period), new(en.Power)
+		r.ApparentPower, r.ReactivePower = new(en.ApparentPower), new(en.ReactivePower)
+		r.Voltage, r.Current = new(en.Voltage), new(en.Current)
+		r.Today, r.Yesterday = new(en.Today), new(en.Yesterday)
+	}
+	if b := e.Baro; b != nil {
+		r.Pressure = new(b.Pressure)
+	}
+	if i := e.Dc; i != nil {
+		r.DcVoltage, r.DcCurrent, r.DcPower = new(i.Voltage), new(i.Current), new(i.Power)
+	}
+	if c := e.Co2; c != nil {
+		r.CO2 = new(c.CO2)
+	}
+
+	// climate, in order of precedence
+	switch {
+	case e.TempHum != nil:
+		r.Temperature, r.Humidity, r.DewPoint = new(e.TempHum.Temperature), new(e.TempHum.Humidity), new(e.TempHum.DewPoint)
+	case e.Co2 != nil:
+		r.Temperature, r.Humidity, r.DewPoint = new(e.Co2.Temperature), new(e.Co2.Humidity), new(e.Co2.DewPoint)
+	}
+	return r
 }
 
 // ChipTemperature returns the ESP32 chip temperature, nil if the device doesn't report it.

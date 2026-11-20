@@ -70,21 +70,19 @@ func (c *SensorsController) GetMulti(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for _, agg := range dbAggs {
-			state, ok := states[agg.DeviceId]
-			if !ok {
+			if _, ok := states[agg.DeviceId]; !ok {
 				continue
 			}
-			record := NewSensorEventFromAggregate(&agg, state.Device)
+			record := NewSensorEventFromAggregate(&agg)
 			result[agg.DeviceId] = append(result[agg.DeviceId], record)
 		}
 
 		// Include buffered (unflushed) events as individual readings
 		for _, currentEvent := range c.s.GetBuffer() {
-			state, ok := states[currentEvent.DeviceId]
-			if !ok {
+			if _, ok := states[currentEvent.DeviceId]; !ok {
 				continue
 			}
-			record := NewSensorEvent(currentEvent, state.Device)
+			record := NewSensorEvent(currentEvent)
 			result[currentEvent.DeviceId] = append(result[currentEvent.DeviceId], record)
 		}
 	}

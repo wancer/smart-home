@@ -35,6 +35,20 @@ type SensorAggregate struct {
 	HumidityMin    *float32
 	HumidityMax    *float32
 	DewPointAvg    *float32
+	PressureAvg    *float32 // hPa
+	PressureMin    *float32
+	PressureMax    *float32
+
+	// DC power monitor (INA219)
+	DcVoltageAvg *float32
+	DcVoltageMin *float32
+	DcVoltageMax *float32
+	DcCurrentAvg *float32
+	DcCurrentMin *float32
+	DcCurrentMax *float32
+	DcPowerAvg   *float32
+	DcPowerMin   *float32
+	DcPowerMax   *float32
 
 	// ESP32 chip temperature, for every device reporting it; pruned after ChipTemperatureRetention.
 	ChipTemperatureAvg *float32

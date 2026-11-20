@@ -122,6 +122,7 @@ func (s *Storage) PruneChipTemperature() {
 		Where("datetime(bucket_time) < datetime(?)", cutoff).
 		Where("chip_temperature_avg IS NULL AND power_consumed IS NULL AND power_avg IS NULL AND current_avg IS NULL AND voltage_avg IS NULL").
 		Where("co2_avg IS NULL AND temperature_avg IS NULL AND humidity_avg IS NULL AND dew_point_avg IS NULL").
+		Where("pressure_avg IS NULL AND dc_voltage_avg IS NULL AND dc_current_avg IS NULL AND dc_power_avg IS NULL").
 		Delete(&model.SensorAggregate{})
 	if res.Error != nil {
 		slog.Error("prune empty aggregates", "err", res.Error)

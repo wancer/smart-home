@@ -14,6 +14,10 @@ const (
 	MetricCO2         = "co2"         // ppm
 	MetricTemperature = "temperature" // °C
 	MetricHumidity    = "humidity"    // %
+	MetricPressure    = "pressure"    // hPa
+	MetricDcVoltage   = "dc_voltage"  // V
+	MetricDcCurrent   = "dc_current"  // A
+	MetricDcPower     = "dc_power"    // W
 )
 
 // MetricsBySensorType lists the metrics a threshold rule may watch for each device type.
@@ -21,6 +25,10 @@ var MetricsBySensorType = map[string][]string{
 	SensorTypeEnergy:    {MetricPower, MetricCurrent, MetricVoltage},
 	SensorTypeCo2:       {MetricCO2, MetricTemperature, MetricHumidity},
 	SensorTypeTempHumid: {MetricTemperature, MetricHumidity},
+	SensorTypeMulti: {
+		MetricPower, MetricCurrent, MetricVoltage, MetricCO2, MetricTemperature, MetricHumidity,
+		MetricPressure, MetricDcVoltage, MetricDcCurrent, MetricDcPower,
+	},
 }
 
 // NotifyRule is a per-device Telegram notification setting.
