@@ -31,6 +31,11 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 	if !state.Online {
 		slog.Info(fmt.Sprintf("Getting %s online", state.Device.Name))
 		state.Online = true
+		if !state.CanToggle() {
+			// No relay: Tasmota answers POWER with "Command Unknown", so "on" mirrors availability.
+			// With a relay the POWER reply (PublishStates below) sets it.
+			state.On = new(true)
+		}
 		h.p.PublishStates(state.Device)
 		h.dispatcher.Dispatch(&event.DeviceAvailability{DeviceId: state.Device.ID, Online: true})
 	}

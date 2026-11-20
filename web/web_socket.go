@@ -145,12 +145,17 @@ func (s *WebSocketServer) Subscribe(dispatcher *event.Dispatcher, states *intern
 
 	// IR remotes and unrecognised devices get their availability from LWT, which emits no
 	// Power or InternalOfflineEvent, so push their online/offline transitions explicitly.
+	// Sensor devices without a relay get no POWER reply either, so push their online
+	// transition too (their offline one goes out via InternalOfflineEvent).
 	dispatcher.Subscribe(
 		"DeviceAvailability",
 		func(raw any) {
 			e := raw.(*event.DeviceAvailability)
 			deviceState := states.GetById(e.DeviceId)
-			if deviceState == nil || !deviceState.Device.AvailabilityFromLwt() {
+			if deviceState == nil {
+				return
+			}
+			if !deviceState.Device.AvailabilityFromLwt() && (!e.Online || deviceState.CanToggle()) {
 				return
 			}
 

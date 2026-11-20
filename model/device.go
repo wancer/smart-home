@@ -35,6 +35,8 @@ type Device struct {
 	OfflineTimeout uint `gorm:"not null;default:0"`
 	// StorageTiers is the sensor data retention (see StorageTier); empty = DefaultStorageTiers.
 	StorageTiers []StorageTier `gorm:"type:text;serializer:json"`
+	// Dashboard is what the dashboard shows for the device; nil = auto.
+	Dashboard *DashboardView `gorm:"type:text;serializer:json"`
 
 	// Profile: what the device is, read from it (Template, STATUS2, STATUS10) and kept across
 	// restarts. Refreshed whenever the device comes online and on demand.

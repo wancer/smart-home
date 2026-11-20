@@ -108,6 +108,39 @@ func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(NewDeviceResponse(state))
 }
 
+// UpdateDashboard sets what the dashboard shows for the device (chart metric, shown values).
+func (c *DevicesController) UpdateDashboard(w http.ResponseWriter, r *http.Request) {
+	state := deviceState(w, r, c.states)
+	if state == nil {
+		return
+	}
+
+	var view model.DashboardView
+	if err := json.NewDecoder(r.Body).Decode(&view); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	if err := model.ValidateDashboardView(view); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	device := state.Device
+	device.Dashboard = &view
+	if view.Chart == model.DashboardChartAuto && view.Values == nil {
+		device.Dashboard = nil
+	}
+	err := c.db.WithContext(r.Context()).Model(device).Select("Dashboard").Updates(device).Error
+	if err != nil {
+		slog.Error("[device][dashboard] error", "err", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("[device][dashboard] success", "id", device.ID)
+	json.NewEncoder(w).Encode(NewDeviceResponse(state))
+}
+
 func (c *DevicesController) Delete(w http.ResponseWriter, r *http.Request) {
 	state := deviceState(w, r, c.states)
 	if state == nil {

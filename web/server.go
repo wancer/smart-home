@@ -88,6 +88,7 @@ func NewWebServer(
 		r.Put("/api/devices/{deviceId}", devices.Update)
 		r.Delete("/api/devices/{deviceId}", devices.Delete)
 		r.Delete("/api/devices/{deviceId}/sensors", devices.WipeSensorData)
+		r.Put("/api/devices/{deviceId}/dashboard", devices.UpdateDashboard)
 		r.Post("/api/devices/{deviceId}/profile/refresh", devices.RefreshProfile)
 		r.Get("/api/auth/verify", auth.VerifyHandler)
 		r.Post("/api/auth/refresh", auth.RefreshHandler)

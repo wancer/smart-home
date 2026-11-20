@@ -115,6 +115,7 @@ func NewDeviceResponse(state *internal.DeviceState) *DeviceResponse {
 		Profile:        newDeviceProfile(state),
 		OfflineTimeout: state.Device.OfflineTimeout,
 		StorageTiers:   state.Device.Tiers(),
+		Dashboard:      dashboardView(state.Device),
 		State: &DeviceState{
 			On: state.On,
 
@@ -167,6 +168,8 @@ type DeviceResponse struct {
 	OfflineTimeout uint         `json:"offlineTimeout"` // seconds, 0 = auto
 	// StorageTiers is the effective sensor data retention (the default when not set).
 	StorageTiers []model.StorageTier `json:"storageTiers"`
+	// Dashboard is what the dashboard shows (chart "" and values null = auto).
+	Dashboard    model.DashboardView `json:"dashboard"`
 	State        *DeviceState        `json:"state"`
 
 	// SensorHistory is only filled in the device list.
@@ -367,4 +370,11 @@ type DeviceConfig struct {
 	LedConfig  LedConfig      `json:"led"`
 	Firmware   FirmwareConfig `json:"firmware"`
 	Hardware   *string        `json:"hardware"`
+}
+
+func dashboardView(device *model.Device) model.DashboardView {
+	if device.Dashboard == nil {
+		return model.DashboardView{}
+	}
+	return *device.Dashboard
 }
