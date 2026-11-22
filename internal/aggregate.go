@@ -55,6 +55,9 @@ func readingAggregate(r *model.SensorEvent) *model.SensorAggregate {
 	if r.Pressure != nil {
 		agg.PressureAvg, agg.PressureMin, agg.PressureMax = triple(*r.Pressure)
 	}
+	if r.Gas != nil {
+		agg.GasAvg, agg.GasMin, agg.GasMax = triple(*r.Gas)
+	}
 	if r.DcVoltage != nil {
 		agg.DcVoltageAvg, agg.DcVoltageMin, agg.DcVoltageMax = triple(*r.DcVoltage)
 	}
@@ -125,6 +128,9 @@ func MergeInto(dst, src *model.SensorAggregate) {
 	dst.PressureAvg = mergeAvg(dst.PressureAvg, n1, src.PressureAvg, n2)
 	dst.PressureMin = mergeMin(dst.PressureMin, src.PressureMin)
 	dst.PressureMax = mergeMax(dst.PressureMax, src.PressureMax)
+	dst.GasAvg = mergeAvg(dst.GasAvg, n1, src.GasAvg, n2)
+	dst.GasMin = mergeMin(dst.GasMin, src.GasMin)
+	dst.GasMax = mergeMax(dst.GasMax, src.GasMax)
 
 	dst.DcVoltageAvg = mergeAvg(dst.DcVoltageAvg, n1, src.DcVoltageAvg, n2)
 	dst.DcVoltageMin = mergeMin(dst.DcVoltageMin, src.DcVoltageMin)

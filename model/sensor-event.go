@@ -27,6 +27,7 @@ type SensorEvent struct {
 	DcVoltage *float32 `gorm:"-"`
 	DcCurrent *float32 `gorm:"-"`
 	DcPower   *float32 `gorm:"-"`
+	Gas       *float32 `gorm:"-"` // ppm, MQ-xxx
 
 	// ChipTemperature is only buffered for sensor_aggregate; sensor_event is no longer written.
 	ChipTemperature *float32 `gorm:"-"`

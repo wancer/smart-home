@@ -38,6 +38,9 @@ type SensorAggregate struct {
 	PressureAvg    *float32 // hPa
 	PressureMin    *float32
 	PressureMax    *float32
+	GasAvg         *float32 // ppm, MQ-xxx gas sensor
+	GasMin         *float32
+	GasMax         *float32
 
 	// DC power monitor (INA219)
 	DcVoltageAvg *float32

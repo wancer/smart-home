@@ -247,6 +247,9 @@ func newDeviceSensorEvent(at time.Time, agg *model.SensorAggregate) DeviceSensor
 	record.PressureAvg = agg.PressureAvg
 	record.PressureMin = agg.PressureMin
 	record.PressureMax = agg.PressureMax
+	record.GasAvg = agg.GasAvg
+	record.GasMin = agg.GasMin
+	record.GasMax = agg.GasMax
 
 	record.DcVoltageAvg = agg.DcVoltageAvg
 	record.DcVoltageMin = agg.DcVoltageMin

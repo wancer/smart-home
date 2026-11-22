@@ -39,13 +39,13 @@ func DetectSensorType(gpio []int, sns *event.SensorEvent) string {
 	return model.SensorTypeOther
 }
 
-// isMultiSensor: a sensor only the multi type shows (pressure, DC monitor), or an energy
+// isMultiSensor: a sensor only the multi type shows (pressure, DC monitor, MQ gas), or an energy
 // meter together with a climate sensor.
 func isMultiSensor(sns *event.SensorEvent) bool {
 	if sns == nil {
 		return false
 	}
-	return sns.Baro != nil || sns.Dc != nil || (sns.Energy != nil && (sns.Co2 != nil || sns.TempHum != nil))
+	return sns.Baro != nil || sns.Dc != nil || sns.Gas != nil || (sns.Energy != nil && (sns.Co2 != nil || sns.TempHum != nil))
 }
 
 func hasIr(gpio []int) bool {
@@ -70,7 +70,7 @@ func HasSensorData(sensorType string, sns *event.SensorEvent) bool {
 	case model.SensorTypeTempHumid:
 		return sns.TempHum != nil
 	case model.SensorTypeMulti:
-		return sns.Energy != nil || sns.Co2 != nil || sns.TempHum != nil || sns.Baro != nil || sns.Dc != nil
+		return sns.Energy != nil || sns.Co2 != nil || sns.TempHum != nil || sns.Baro != nil || sns.Dc != nil || sns.Gas != nil
 	}
 	return false
 }

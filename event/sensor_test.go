@@ -59,3 +59,26 @@ func TestReadingsNil(t *testing.T) {
 		t.Error("nil event must have no readings")
 	}
 }
+
+func TestReadingsMQ135(t *testing.T) {
+	payload := `{"Time":"2026-11-22T12:00:00","ANALOG":{"A1":12,"MQ135_1":0.02},"ESP32":{"Temperature":40.0},"TempUnit":"C"}`
+
+	var e SensorEvent
+	if err := json.Unmarshal([]byte(payload), &e); err != nil {
+		t.Fatal(err)
+	}
+	if e.Gas == nil || e.Gas.Name != "MQ135_1" {
+		t.Fatalf("gas sensor not found: %+v", e.Gas)
+	}
+	if r := e.Readings(); r.Gas == nil || *r.Gas != 0.02 {
+		t.Errorf("Gas = %v, want 0.02", r.Gas)
+	}
+	if e.TempHum != nil || e.Co2 != nil {
+		t.Errorf("unexpected climate sensor: %+v", e)
+	}
+
+	var plain SensorEvent
+	if err := json.Unmarshal([]byte(`{"ANALOG":{"A1":512}}`), &plain); err != nil || plain.Gas != nil {
+		t.Errorf("raw ANALOG must not be a gas sensor: %+v %v", plain.Gas, err)
+	}
+}

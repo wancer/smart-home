@@ -21,6 +21,7 @@ type SensorEvent struct {
 	Temperature *float32 `json:"temperature"`
 	Humidity    *float32 `json:"humidity"`
 	Pressure    *float32 `json:"pressure"` // hPa
+	Gas         *float32 `json:"gas"`      // ppm, MQ-xxx
 
 	DcVoltage *float32 `json:"dcVoltage"`
 	DcCurrent *float32 `json:"dcCurrent"`
@@ -44,6 +45,7 @@ func NewSensorFromEvent(e *event.SensorEvent, d *model.Device) *SensorEvent {
 		Temperature: r.Temperature,
 		Humidity:    r.Humidity,
 		Pressure:    r.Pressure,
+		Gas:         r.Gas,
 
 		DcVoltage: r.DcVoltage,
 		DcCurrent: r.DcCurrent,
@@ -66,6 +68,7 @@ func NewSensorEvent(dbRecord *model.SensorEvent) *SensorEvent {
 		Temperature: dbRecord.Temperature,
 		Humidity:    dbRecord.Humidity,
 		Pressure:    dbRecord.Pressure,
+		Gas:         dbRecord.Gas,
 
 		DcVoltage: dbRecord.DcVoltage,
 		DcCurrent: dbRecord.DcCurrent,
@@ -88,6 +91,7 @@ func NewSensorEventFromAggregate(agg *model.SensorAggregate) *SensorEvent {
 		Temperature: agg.TemperatureAvg,
 		Humidity:    agg.HumidityAvg,
 		Pressure:    agg.PressureAvg,
+		Gas:         agg.GasAvg,
 
 		DcVoltage: agg.DcVoltageAvg,
 		DcCurrent: agg.DcCurrentAvg,
@@ -127,6 +131,7 @@ func NewDeviceResponse(state *internal.DeviceState) *DeviceResponse {
 			Temperature: state.Temperature,
 			Humidity:    state.Humidity,
 			Pressure:    state.Pressure,
+			Gas:         state.Gas,
 
 			DcVoltage: state.DcVoltage,
 			DcCurrent: state.DcCurrent,
@@ -149,6 +154,7 @@ type DeviceState struct {
 	Temperature *float32 `json:"temperature"`
 	Humidity    *float32 `json:"humidity"`
 	Pressure    *float32 `json:"pressure"`
+	Gas         *float32 `json:"gas"`
 
 	DcVoltage *float32 `json:"dcVoltage"`
 	DcCurrent *float32 `json:"dcCurrent"`
@@ -216,6 +222,9 @@ type DeviceSensorEvent struct {
 	PressureAvg    *float32 `json:"pressureAvg"`
 	PressureMin    *float32 `json:"pressureMin"`
 	PressureMax    *float32 `json:"pressureMax"`
+	GasAvg         *float32 `json:"gasAvg"`
+	GasMin         *float32 `json:"gasMin"`
+	GasMax         *float32 `json:"gasMax"`
 
 	DcVoltageAvg *float32 `json:"dcVoltageAvg"`
 	DcVoltageMin *float32 `json:"dcVoltageMin"`

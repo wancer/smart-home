@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -63,6 +64,13 @@ type DcMonitor struct {
 	Power   float32 `json:"Power"`   // W
 }
 
+// GasSensor is an MQ-xxx gas sensor on the ADC (MQ-2, MQ-135, ...), reported in the ANALOG
+// object as "MQ135_1": ppm (as calibrated in Tasmota).
+type GasSensor struct {
+	Name string  // e.g. MQ135_1
+	Ppm  float32 // ppm
+}
+
 // Chip is the ESP32 internal temperature sensor, reported with SetOption146 1.
 type Chip struct {
 	Temperature float32 `json:"Temperature"`
@@ -72,7 +80,7 @@ type Chip struct {
 // fields, not their names: the first one with CarbonDioxide is Co2 (SCD40, MHZ19B, ...), the
 // first other one with Temperature and Humidity is TempHum (SHT4X, SHT3X, AM2301, BME280, ...),
 // the first one with Pressure is Baro (BME280, BMP280, ...) and the first one with Voltage and
-// Current is Dc (INA219, ...).
+// Current is Dc (INA219, ...). The first MQ-xxx value in ANALOG is Gas.
 type SensorEvent struct {
 	Time    TasmotaTime
 	Energy  *Energy
@@ -80,6 +88,7 @@ type SensorEvent struct {
 	TempHum *TempHumidity
 	Baro    *Barometer
 	Dc      *DcMonitor
+	Gas     *GasSensor
 	Chip    *Chip
 
 	Sensors []string // names of all sensor objects, sorted (ENERGY, SCD40, ESP32, ...)
@@ -116,6 +125,9 @@ func (e *SensorEvent) UnmarshalJSON(in []byte) error {
 				return err
 			}
 			continue
+		case "ANALOG":
+			e.Gas = parseGas(value)
+			continue
 		}
 
 		var probe struct {
@@ -148,6 +160,26 @@ func (e *SensorEvent) UnmarshalJSON(in []byte) error {
 	return nil
 }
 
+// parseGas returns the first MQ-xxx value (by name) of an ANALOG object, nil if there is none
+// (ANALOG also carries raw A1, Temperature1, Range1, ...).
+func parseGas(value json.RawMessage) *GasSensor {
+	var analog map[string]json.RawMessage
+	if err := json.Unmarshal(value, &analog); err != nil {
+		return nil
+	}
+	for _, name := range slices.Sorted(maps.Keys(analog)) {
+		if !strings.HasPrefix(name, "MQ") {
+			continue
+		}
+		var ppm float32
+		if err := json.Unmarshal(analog[name], &ppm); err != nil {
+			continue
+		}
+		return &GasSensor{Name: name, Ppm: ppm}
+	}
+	return nil
+}
+
 func deref(v *float32) float32 {
 	if v == nil {
 		return 0
@@ -174,6 +206,7 @@ type Readings struct {
 	Humidity    *float32
 	DewPoint    *float32
 	Pressure    *float32 // hPa
+	Gas         *float32 // ppm, MQ-xxx gas sensor
 
 	// DC power monitor
 	DcVoltage *float32
@@ -194,6 +227,9 @@ func (e *SensorEvent) Readings() Readings {
 	}
 	if b := e.Baro; b != nil {
 		r.Pressure = new(b.Pressure)
+	}
+	if g := e.Gas; g != nil {
+		r.Gas = new(g.Ppm)
 	}
 	if i := e.Dc; i != nil {
 		r.DcVoltage, r.DcCurrent, r.DcPower = new(i.Voltage), new(i.Current), new(i.Power)

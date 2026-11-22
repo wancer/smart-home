@@ -91,6 +91,7 @@ func toModel(e *event.SensorEvent, device *model.Device, now *time.Time) *model.
 	r.Voltage, r.Current = readings.Voltage, readings.Current
 	r.CO2, r.Temperature, r.Humidity, r.DewPoint, r.Pressure = readings.CO2, readings.Temperature, readings.Humidity, readings.DewPoint, readings.Pressure
 	r.DcVoltage, r.DcCurrent, r.DcPower = readings.DcVoltage, readings.DcCurrent, readings.DcPower
+	r.Gas = readings.Gas
 
 	return r
 }

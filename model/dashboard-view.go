@@ -9,7 +9,7 @@ import (
 var MetricKeys = []string{
 	"power", "current", "voltage",
 	"temperature", "humidity", "co2",
-	"pressure",
+	"pressure", "gas",
 	"dcPower", "dcCurrent", "dcVoltage",
 }
 

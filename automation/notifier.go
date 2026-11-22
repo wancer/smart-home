@@ -447,6 +447,10 @@ func metricValue(state *internal.DeviceState, metric string) (float64, bool) {
 		if state.Pressure != nil {
 			return float64(*state.Pressure), true
 		}
+	case model.MetricGas:
+		if state.Gas != nil {
+			return float64(*state.Gas), true
+		}
 	case model.MetricDcVoltage:
 		if state.DcVoltage != nil {
 			return float64(*state.DcVoltage), true
@@ -474,6 +478,7 @@ var metricUnits = map[string]struct {
 	model.MetricTemperature: {"°C", 1},
 	model.MetricHumidity:    {"%", 1},
 	model.MetricPressure:    {" hPa", 1},
+	model.MetricGas:         {" ppm", 2},
 	model.MetricDcVoltage:   {" V", 2},
 	model.MetricDcCurrent:   {" A", 3},
 	model.MetricDcPower:     {" W", 2},

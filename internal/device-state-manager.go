@@ -76,6 +76,7 @@ type DeviceState struct {
 	Humidity    *float32
 	DewPoint    *float32
 	Pressure    *float32 // hPa
+	Gas         *float32 // ppm, MQ-xxx
 
 	DcVoltage *float32
 	DcCurrent *float32
@@ -95,6 +96,7 @@ func (s *DeviceState) SetReadings(r *event.Readings) {
 	s.Power, s.Current, s.Voltage, s.Today = r.Power, r.Current, r.Voltage, r.Today
 	s.CO2, s.Temperature, s.Humidity, s.DewPoint, s.Pressure = r.CO2, r.Temperature, r.Humidity, r.DewPoint, r.Pressure
 	s.DcVoltage, s.DcCurrent, s.DcPower = r.DcVoltage, r.DcCurrent, r.DcPower
+	s.Gas = r.Gas
 }
 
 // ClearReadings forgets the live sensor values, e.g. when the device goes offline.

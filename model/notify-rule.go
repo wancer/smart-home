@@ -15,6 +15,7 @@ const (
 	MetricTemperature = "temperature" // °C
 	MetricHumidity    = "humidity"    // %
 	MetricPressure    = "pressure"    // hPa
+	MetricGas         = "gas"         // ppm, MQ-xxx
 	MetricDcVoltage   = "dc_voltage"  // V
 	MetricDcCurrent   = "dc_current"  // A
 	MetricDcPower     = "dc_power"    // W
@@ -27,7 +28,7 @@ var MetricsBySensorType = map[string][]string{
 	SensorTypeTempHumid: {MetricTemperature, MetricHumidity},
 	SensorTypeMulti: {
 		MetricPower, MetricCurrent, MetricVoltage, MetricCO2, MetricTemperature, MetricHumidity,
-		MetricPressure, MetricDcVoltage, MetricDcCurrent, MetricDcPower,
+		MetricPressure, MetricGas, MetricDcVoltage, MetricDcCurrent, MetricDcPower,
 	},
 }
 
