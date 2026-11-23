@@ -8,136 +8,87 @@ import (
 	"time"
 )
 
-// SensorEvent is a live or stored reading. Fields the device doesn't report are null.
+// SensorEvent is the WS `sensor` event: the device's live series values of one telemetry message.
 type SensorEvent struct {
 	DeviceId   uint   `json:"deviceId"`
 	Time       int64  `json:"time"`
 	DeviceTime string `json:"deviceTime"`
-
-	Power   *uint    `json:"power"`
-	Current *float32 `json:"current"`
-	Voltage *uint    `json:"voltage"`
-
-	CO2Dioxide  *uint    `json:"co2"`
-	Temperature *float32 `json:"temperature"`
-	Humidity    *float32 `json:"humidity"`
-	Pressure    *float32 `json:"pressure"`    // hPa
-	GasRatio    *float32 `json:"gasRatio"`    // MQ-xxx, 1.0 = calibration air
-	Illuminance *float32 `json:"illuminance"` // lx
-	ColorTemp   *float32 `json:"colorTemp"`   // K
-
-	DcVoltage *float32 `json:"dcVoltage"`
-	DcCurrent *float32 `json:"dcCurrent"`
-	DcPower   *float32 `json:"dcPower"`
-
-	ChipTemperature *float32 `json:"chipTemperature"`
-
-	// Raw is every numeric sensor field as reported (sensor -> field -> value); live events only.
-	Raw map[string]map[string]float64 `json:"raw,omitempty"`
+	// Values are the live series values (series ID -> value).
+	Values map[uint]float64 `json:"values"`
 }
 
-func NewSensorFromEvent(e *event.SensorEvent, d *model.Device) *SensorEvent {
-	r := e.Readings()
+// NewSensorFromEvent builds a live WS event; values are the device's live series values.
+func NewSensorFromEvent(e *event.SensorEvent, d *model.Device, values map[uint]float64) *SensorEvent {
+	if values == nil {
+		values = map[uint]float64{}
+	}
 	return &SensorEvent{
 		DeviceId:   d.ID,
 		Time:       time.Now().Unix(),
 		DeviceTime: time.Time(e.Time).Format(time.DateTime),
-
-		Power:   r.Power,
-		Current: r.Current,
-		Voltage: r.Voltage,
-
-		CO2Dioxide:  r.CO2,
-		Temperature: r.Temperature,
-		Humidity:    r.Humidity,
-		Pressure:    r.Pressure,
-		GasRatio:    r.GasRatio,
-		Illuminance: r.Illuminance,
-		ColorTemp:   r.ColorTemp,
-
-		DcVoltage: r.DcVoltage,
-		DcCurrent: r.DcCurrent,
-		DcPower:   r.DcPower,
-
-		ChipTemperature: e.ChipTemperature(),
-		Raw:             e.Raw,
+		Values:     values,
 	}
 }
 
-// newSensorEventFromValues builds a reading from series values at one time (stored buckets
-// or buffered readings): each fixed field takes the first preferred series of its kind
-// (internal.PreferredSeries) that has a value.
-func newSensorEventFromValues(deviceId uint, at time.Time, preferred map[string][]uint, values map[uint]*model.SensorValue) *SensorEvent {
-	avg := func(kind string) *float32 {
-		if v, ok := internal.PickValue(preferred, kind, values); ok {
-			return new(float32(v.Avg))
-		}
-		return nil
-	}
-	return &SensorEvent{
-		DeviceId: deviceId,
-		Time:     at.Unix(),
+// SeriesSource gives a device's series metadata (internal.Storage).
+type SeriesSource interface {
+	DeviceSeries(deviceId uint) []model.SensorSeries
+}
 
-		Power:   truncUint(avg(model.KindPower)),
-		Current: avg(model.KindCurrent),
-		Voltage: truncUint(avg(model.KindVoltage)),
+// SeriesResponse is one series of a device: device × sensor (source) × field, its kind (the
+// physical quantity, see model.Kinds) and the user's label/hidden setting.
+type SeriesResponse struct {
+	Id        uint    `json:"id"`
+	Source    string  `json:"source"`
+	Field     string  `json:"field"`
+	Kind      string  `json:"kind"`
+	Unit      string  `json:"unit"`
+	Precision int     `json:"precision"`
+	Label     *string `json:"label"`
+	Hidden    bool    `json:"hidden"`
+}
 
-		CO2Dioxide:  truncUint(avg(model.KindCo2)),
-		Temperature: avg(model.KindTemperature),
-		Humidity:    avg(model.KindHumidity),
-		Pressure:    avg(model.KindPressure),
-		GasRatio:    avg(model.KindGasRatio),
-		Illuminance: avg(model.KindIlluminance),
-		ColorTemp:   avg(model.KindColorTemp),
-
-		DcVoltage: avg(model.KindDcVoltage),
-		DcCurrent: avg(model.KindDcCurrent),
-		DcPower:   avg(model.KindDcPower),
-
-		ChipTemperature: avg(model.KindChipTemperature),
+func newSeriesResponse(s model.SensorSeries) SeriesResponse {
+	info := model.Kinds[s.Kind]
+	return SeriesResponse{
+		Id: s.Id, Source: s.Source, Field: s.Field, Kind: s.Kind,
+		Unit: info.Unit, Precision: info.Precision, Label: s.Label, Hidden: s.Hidden,
 	}
 }
 
-func truncUint(v *float32) *uint {
-	if v == nil {
-		return nil
+func newSeriesList(series []model.SensorSeries) []SeriesResponse {
+	result := make([]SeriesResponse, len(series))
+	for i, s := range series {
+		result[i] = newSeriesResponse(s)
 	}
-	return new(uint(max(0, *v)))
+	return result
 }
 
-func NewDeviceResponse(state *internal.DeviceState) *DeviceResponse {
+func NewDeviceResponse(state *internal.DeviceState, source SeriesSource) *DeviceResponse {
+	values := state.Values
+	if values == nil {
+		values = map[uint]float64{}
+	}
+	var last *int64
+	if state.LastUpdate != nil {
+		last = new(state.LastUpdate.Unix())
+	}
 	return &DeviceResponse{
-		ID:             state.Device.ID,
-		Name:           state.Device.Name,
-		Topic:          state.Device.Topic,
-		Enabled:        state.Device.Enabled,
-		SensorType:     state.Device.SensorType,
-		SupportsToggle: state.CanToggle(),
-		Profile:        newDeviceProfile(state),
-		OfflineTimeout: state.Device.OfflineTimeout,
-		StorageTiers:   state.Device.Tiers(),
-		Dashboard:      dashboardView(state.Device),
+		Series:          newSeriesList(source.DeviceSeries(state.Device.ID)),
+		DashboardSeries: dashboardView(state.Device),
+		ID:              state.Device.ID,
+		Name:            state.Device.Name,
+		Topic:           state.Device.Topic,
+		Enabled:         state.Device.Enabled,
+		SensorType:      state.Device.SensorType,
+		SupportsToggle:  state.CanToggle(),
+		Profile:         newDeviceProfile(state),
+		OfflineTimeout:  state.Device.OfflineTimeout,
+		StorageTiers:    state.Device.Tiers(),
 		State: &DeviceState{
-			On: state.On,
-
-			Power:   state.Power,
-			Voltage: state.Voltage,
-
-			Current:     state.Current,
-			CO2:         state.CO2,
-			Temperature: state.Temperature,
-			Humidity:    state.Humidity,
-			Pressure:    state.Pressure,
-			GasRatio:    state.GasRatio,
-			Illuminance: state.Illuminance,
-			ColorTemp:   state.ColorTemp,
-
-			DcVoltage: state.DcVoltage,
-			DcCurrent: state.DcCurrent,
-			DcPower:   state.DcPower,
-
-			ChipTemperature: state.ChipTemperature,
-			Raw:             state.Raw,
+			On:         state.On,
+			LastUpdate: last,
+			Values:     values,
 		},
 	}
 }
@@ -145,27 +96,8 @@ func NewDeviceResponse(state *internal.DeviceState) *DeviceResponse {
 type DeviceState struct {
 	On         *bool  `json:"on"`
 	LastUpdate *int64 `json:"last"`
-
-	Power   *uint    `json:"power"`
-	Current *float32 `json:"current"`
-	Voltage *uint    `json:"voltage"`
-
-	CO2         *uint    `json:"co2"`
-	Temperature *float32 `json:"temperature"`
-	Humidity    *float32 `json:"humidity"`
-	Pressure    *float32 `json:"pressure"`
-	GasRatio    *float32 `json:"gasRatio"`
-	Illuminance *float32 `json:"illuminance"`
-	ColorTemp   *float32 `json:"colorTemp"`
-
-	DcVoltage *float32 `json:"dcVoltage"`
-	DcCurrent *float32 `json:"dcCurrent"`
-	DcPower   *float32 `json:"dcPower"`
-
-	ChipTemperature *float32 `json:"chipTemperature"`
-
-	// Raw is every numeric sensor field of the last telemetry (sensor -> field -> value); null while offline.
-	Raw map[string]map[string]float64 `json:"raw"`
+	// Values are the live series values (series ID -> value); empty while offline.
+	Values map[uint]float64 `json:"values"`
 }
 
 type DeviceResponse struct {
@@ -179,9 +111,11 @@ type DeviceResponse struct {
 	OfflineTimeout uint           `json:"offlineTimeout"` // seconds, 0 = auto
 	// StorageTiers is the effective sensor data retention (the default when not set).
 	StorageTiers []model.StorageTier `json:"storageTiers"`
-	// Dashboard is what the dashboard shows (chart "" and values null = auto).
-	Dashboard model.DashboardView `json:"dashboard"`
-	State     *DeviceState        `json:"state"`
+	// DashboardSeries is what the dashboard shows, by series (chart null and values null = auto).
+	DashboardSeries model.DashboardView `json:"dashboardSeries"`
+	// Series are the device's sensor series (every one ever seen, also hidden ones).
+	Series []SeriesResponse `json:"series"`
+	State  *DeviceState     `json:"state"`
 
 	// SensorHistory is only filled in the device list.
 	SensorHistory *SensorHistorySize `json:"sensorHistory,omitempty"`
@@ -196,57 +130,6 @@ type SensorHistorySize struct {
 type WsStateEvent struct {
 	ID uint  `json:"deviceId"`
 	On *bool `json:"on"`
-}
-
-// DeviceSensorEvent is one chart point. Min/max are nil for data stored before they were
-// tracked.
-type DeviceSensorEvent struct {
-	Time int64 `json:"time"`
-
-	PowerConsumed *float32 `json:"powerConsumed"`
-	PowerAvg      *uint    `json:"powerAvg"`
-	PowerMin      *uint    `json:"powerMin"`
-	PowerMax      *uint    `json:"powerMax"`
-	CurrentAvg    *float32 `json:"currentAvg"`
-	CurrentMin    *float32 `json:"currentMin"`
-	CurrentMax    *float32 `json:"currentMax"`
-	VoltageAvg    *uint    `json:"voltageAvg"`
-	VoltageMin    *uint    `json:"voltageMin"`
-	VoltageMax    *uint    `json:"voltageMax"`
-
-	CO2Avg         *uint    `json:"co2Avg"`
-	CO2Min         *uint    `json:"co2Min"`
-	CO2Max         *uint    `json:"co2Max"`
-	TemperatureAvg *float32 `json:"temperatureAvg"`
-	TemperatureMin *float32 `json:"temperatureMin"`
-	TemperatureMax *float32 `json:"temperatureMax"`
-	HumidityAvg    *float32 `json:"humidityAvg"`
-	HumidityMin    *float32 `json:"humidityMin"`
-	HumidityMax    *float32 `json:"humidityMax"`
-	PressureAvg    *float32 `json:"pressureAvg"`
-	PressureMin    *float32 `json:"pressureMin"`
-	PressureMax    *float32 `json:"pressureMax"`
-	GasRatioAvg    *float32 `json:"gasRatioAvg"`
-	GasRatioMin    *float32 `json:"gasRatioMin"`
-	GasRatioMax    *float32 `json:"gasRatioMax"`
-	IlluminanceAvg *float32 `json:"illuminanceAvg"`
-	IlluminanceMin *float32 `json:"illuminanceMin"`
-	IlluminanceMax *float32 `json:"illuminanceMax"`
-	ColorTempAvg   *float32 `json:"colorTempAvg"`
-	ColorTempMin   *float32 `json:"colorTempMin"`
-	ColorTempMax   *float32 `json:"colorTempMax"`
-
-	DcVoltageAvg *float32 `json:"dcVoltageAvg"`
-	DcVoltageMin *float32 `json:"dcVoltageMin"`
-	DcVoltageMax *float32 `json:"dcVoltageMax"`
-	DcCurrentAvg *float32 `json:"dcCurrentAvg"`
-	DcCurrentMin *float32 `json:"dcCurrentMin"`
-	DcCurrentMax *float32 `json:"dcCurrentMax"`
-	DcPowerAvg   *float32 `json:"dcPowerAvg"`
-	DcPowerMin   *float32 `json:"dcPowerMin"`
-	DcPowerMax   *float32 `json:"dcPowerMax"`
-
-	ChipTemperatureAvg *float32 `json:"chipTemperatureAvg"`
 }
 
 type DeviceSensorDailyEvent struct {

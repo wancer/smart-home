@@ -5,42 +5,20 @@ import "time"
 const (
 	NotifyOffline = "offline" // device went offline (and stayed offline for Duration)
 	NotifyOnline  = "online"  // device came back after being offline for at least Duration
-	NotifyAbove   = "above"   // Metric > Threshold for Duration
-	NotifyBelow   = "below"   // Metric < Threshold for Duration
-
-	MetricPower       = "power"       // W
-	MetricCurrent     = "current"     // A
-	MetricVoltage     = "voltage"     // V
-	MetricCO2         = "co2"         // ppm
-	MetricTemperature = "temperature" // °C
-	MetricHumidity    = "humidity"    // %
-	MetricPressure    = "pressure"    // hPa
-	MetricGasRatio    = "gas_ratio"   // MQ-xxx gas level, 1.0 = calibration air
-	MetricDcVoltage   = "dc_voltage"  // V
-	MetricDcCurrent   = "dc_current"  // A
-	MetricDcPower     = "dc_power"    // W
-	MetricIlluminance = "illuminance" // lx
-	MetricColorTemp   = "color_temp"  // K
+	NotifyAbove   = "above"   // the series' value > Threshold for Duration
+	NotifyBelow   = "below"   // the series' value < Threshold for Duration
 )
-
-// MetricsBySensorType lists the metrics a threshold rule may watch for each device type.
-var MetricsBySensorType = map[string][]string{
-	SensorTypeEnergy:    {MetricPower, MetricCurrent, MetricVoltage},
-	SensorTypeCo2:       {MetricCO2, MetricTemperature, MetricHumidity},
-	SensorTypeTempHumid: {MetricTemperature, MetricHumidity},
-	SensorTypeMulti: {
-		MetricPower, MetricCurrent, MetricVoltage, MetricCO2, MetricTemperature, MetricHumidity,
-		MetricPressure, MetricGasRatio, MetricDcVoltage, MetricDcCurrent, MetricDcPower,
-		MetricIlluminance, MetricColorTemp,
-	},
-}
 
 // NotifyRule is a per-device Telegram notification setting.
 type NotifyRule struct {
-	ID             uint    `gorm:"primaryKey"`
-	DeviceId       uint    `gorm:"not null;index"`
-	Kind           string  `gorm:"size:16;not null"`
-	Metric         string  `gorm:"size:16"` // above/below only
+	ID       uint   `gorm:"primaryKey"`
+	DeviceId uint   `gorm:"not null;index"`
+	Kind     string `gorm:"size:16;not null"`
+	// SeriesId is the watched series (above/below only).
+	SeriesId *uint
+	// Metric is the legacy metric (= series kind: power, temperature, gas_ratio, ...) of rules made
+	// before series; container.migrateNotifyRules turns it into SeriesId. Not used otherwise.
+	Metric         string  `gorm:"size:16"`
 	Threshold      float64 // above/below only
 	DurationSec    int     `gorm:"not null;default:0"`
 	NotifyRecovery bool    `gorm:"not null;default:false"` // above/below: also notify when the value is back to normal; offline: when the device is back online
@@ -51,3 +29,8 @@ type NotifyRule struct {
 func (NotifyRule) TableName() string { return "notify_rule" }
 
 func (r NotifyRule) Duration() time.Duration { return time.Duration(r.DurationSec) * time.Second }
+
+// UsesThreshold reports whether the rule watches a series value (above/below).
+func (r NotifyRule) UsesThreshold() bool {
+	return r.Kind == NotifyAbove || r.Kind == NotifyBelow
+}

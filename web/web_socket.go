@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"smart-home/event"
 	"smart-home/internal"
@@ -81,7 +82,24 @@ func (s *WebSocketServer) handleConnections(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-func (s *WebSocketServer) Subscribe(dispatcher *event.Dispatcher, states *internal.DeviceStateManager) {
+// WsSeriesEvent is the `series` channel: every series of a device, sent when one is created
+// or its label/hidden flag changes.
+type WsSeriesEvent struct {
+	DeviceId uint             `json:"deviceId"`
+	Series   []SeriesResponse `json:"series"`
+}
+
+// Subscribe must run after the event handlers subscribed: the `sensor` events read the live
+// series values (DeviceState.Values) the handlers just set.
+func (s *WebSocketServer) Subscribe(dispatcher *event.Dispatcher, states *internal.DeviceStateManager, series SeriesSource) {
+	dispatcher.Subscribe(
+		"SeriesChanged",
+		func(raw any) {
+			e := raw.(*event.SeriesChanged)
+			s.Send("series", WsSeriesEvent{DeviceId: e.DeviceId, Series: newSeriesList(series.DeviceSeries(e.DeviceId))})
+		},
+	)
+
 	dispatcher.Subscribe(
 		"Power",
 		func(raw any) {
@@ -120,7 +138,7 @@ func (s *WebSocketServer) Subscribe(dispatcher *event.Dispatcher, states *intern
 			if !internal.HasSensorData(deviceState.Device.SensorType, p.StatusSNS) {
 				return
 			}
-			wsEvent := NewSensorFromEvent(p.StatusSNS, deviceState.Device)
+			wsEvent := NewSensorFromEvent(p.StatusSNS, deviceState.Device, maps.Clone(deviceState.Values))
 			s.Send("sensor", wsEvent)
 		},
 	)
@@ -135,10 +153,12 @@ func (s *WebSocketServer) Subscribe(dispatcher *event.Dispatcher, states *intern
 				return
 			}
 
-			if !internal.HasSensorData(deviceState.Device.SensorType, p) {
+			// IR remotes and unrecognised devices: their live values (e.g. only the chip temperature)
+			if !internal.HasSensorData(deviceState.Device.SensorType, p) &&
+				!(deviceState.Device.AvailabilityFromLwt() && len(deviceState.Values) > 0) {
 				return
 			}
-			wsEvent := NewSensorFromEvent(p, deviceState.Device)
+			wsEvent := NewSensorFromEvent(p, deviceState.Device, maps.Clone(deviceState.Values))
 			s.Send("sensor", wsEvent)
 		},
 	)

@@ -50,10 +50,17 @@ type alertState struct {
 	firing       bool
 }
 
+// SeriesLookup gives sensor series metadata (internal.Storage).
+type SeriesLookup interface {
+	Series(id uint) (model.SensorSeries, bool)
+	DeviceSeries(deviceId uint) []model.SensorSeries
+}
+
 // Notifier evaluates per-device NotifyRules against availability and sensor events.
 type Notifier struct {
 	db     *gorm.DB
 	states *internal.DeviceStateManager
+	series SeriesLookup
 	out    Messenger
 
 	mu           sync.Mutex
@@ -64,9 +71,9 @@ type Notifier struct {
 	alerts       map[uint]*alertState        // rule id -> runtime state
 }
 
-func NewNotifier(db *gorm.DB, states *internal.DeviceStateManager, out Messenger) *Notifier {
+func NewNotifier(db *gorm.DB, states *internal.DeviceStateManager, series SeriesLookup, out Messenger) *Notifier {
 	return &Notifier{
-		db: db, states: states, out: out,
+		db: db, states: states, series: series, out: out,
 		rules:        map[uint][]model.NotifyRule{},
 		offlineSince: map[uint]time.Time{},
 		lastSeen:     map[uint]time.Time{},
@@ -342,13 +349,21 @@ func (n *Notifier) onSensors(e *event.SensorsUpdated) {
 		if rule.Kind != model.NotifyAbove && rule.Kind != model.NotifyBelow {
 			continue
 		}
-		value, ok := metricValue(state, rule.Metric)
+		if rule.SeriesId == nil {
+			continue
+		}
+		series, ok := n.series.Series(*rule.SeriesId)
 		if !ok {
 			continue
 		}
+		value, ok := state.Values[series.Id]
+		if !ok {
+			continue
+		}
+		name := SeriesName(series, n.series.DeviceSeries(state.Device.ID))
 
 		a := n.alert(rule.ID)
-		offNormal := switchedOff && relayMetric(rule.Metric)
+		offNormal := switchedOff && relayKind(series.Kind)
 		holds := !offNormal &&
 			((rule.Kind == model.NotifyAbove && value > rule.Threshold) ||
 				(rule.Kind == model.NotifyBelow && value < rule.Threshold))
@@ -364,8 +379,8 @@ func (n *Notifier) onSensors(e *event.SensorsUpdated) {
 			if held := now.Sub(a.pendingSince); held >= rule.Duration() {
 				a.firing, a.pendingSince = true, time.Time{}
 				text := fmt.Sprintf("%s %s: %s %s is %s %s",
-					notifierEmojiAlert, state.Device.Name, rule.Metric,
-					formatMetric(rule.Metric, value), rule.Kind, formatMetric(rule.Metric, rule.Threshold))
+					notifierEmojiAlert, state.Device.Name, name,
+					FormatSeriesValue(series.Kind, value), rule.Kind, FormatSeriesValue(series.Kind, rule.Threshold))
 				if rule.DurationSec > 0 {
 					text += " for " + humanDuration(held)
 				}
@@ -388,7 +403,7 @@ func (n *Notifier) onSensors(e *event.SensorsUpdated) {
 					n.out.Notify(fmt.Sprintf("%s %s: switched off", notifierEmojiOk, state.Device.Name))
 				} else {
 					n.out.Notify(fmt.Sprintf("%s %s: %s is back to normal, %s",
-						notifierEmojiOk, state.Device.Name, rule.Metric, formatMetric(rule.Metric, value)))
+						notifierEmojiOk, state.Device.Name, name, FormatSeriesValue(series.Kind, value)))
 				}
 			}
 		}
@@ -412,91 +427,45 @@ func (n *Notifier) sendWithDetails(rule model.NotifyRule, defaultText, details s
 	n.out.Notify(defaultText + details)
 }
 
-// relayMetric reports whether the metric drops to 0 when the relay is switched off.
-func relayMetric(metric string) bool {
-	return metric == model.MetricPower || metric == model.MetricCurrent
+// relayKind reports whether a series of the kind drops to 0 when the relay is switched off.
+func relayKind(kind string) bool {
+	return kind == model.KindPower || kind == model.KindCurrent
 }
 
-func metricValue(state *internal.DeviceState, metric string) (float64, bool) {
-	switch metric {
-	case model.MetricPower:
-		if state.Power != nil {
-			return float64(*state.Power), true
-		}
-	case model.MetricCurrent:
-		if state.Current != nil {
-			return float64(*state.Current), true
-		}
-	case model.MetricVoltage:
-		if state.Voltage != nil {
-			return float64(*state.Voltage), true
-		}
-	case model.MetricCO2:
-		if state.CO2 != nil {
-			return float64(*state.CO2), true
-		}
-	case model.MetricTemperature:
-		if state.Temperature != nil {
-			return float64(*state.Temperature), true
-		}
-	case model.MetricHumidity:
-		if state.Humidity != nil {
-			return float64(*state.Humidity), true
-		}
-	case model.MetricPressure:
-		if state.Pressure != nil {
-			return float64(*state.Pressure), true
-		}
-	case model.MetricGasRatio:
-		if state.GasRatio != nil {
-			return float64(*state.GasRatio), true
-		}
-	case model.MetricDcVoltage:
-		if state.DcVoltage != nil {
-			return float64(*state.DcVoltage), true
-		}
-	case model.MetricDcCurrent:
-		if state.DcCurrent != nil {
-			return float64(*state.DcCurrent), true
-		}
-	case model.MetricDcPower:
-		if state.DcPower != nil {
-			return float64(*state.DcPower), true
-		}
-	case model.MetricIlluminance:
-		if state.Illuminance != nil {
-			return float64(*state.Illuminance), true
-		}
-	case model.MetricColorTemp:
-		if state.ColorTemp != nil {
-			return float64(*state.ColorTemp), true
+// SeriesName names a series in messages: its label, else its kind ("dc voltage", "gas ratio",
+// ...) for a known kind or source.field for a raw one, plus the source when another series of
+// the device has the same kind ("illuminance (BH1750)").
+func SeriesName(s model.SensorSeries, all []model.SensorSeries) string {
+	if s.Label != nil && *s.Label != "" {
+		return *s.Label
+	}
+	if s.Kind == model.KindRaw {
+		return s.Source + "." + s.Field
+	}
+	name := strings.ReplaceAll(s.Kind, "_", " ")
+	for _, other := range all {
+		if other.Id != s.Id && other.Kind == s.Kind {
+			return name + " (" + s.Source + ")"
 		}
 	}
-	return 0, false
+	return name
 }
 
-var metricUnits = map[string]struct {
-	unit      string
-	precision int
-}{
-	model.MetricPower:       {" W", 0},
-	model.MetricCurrent:     {" A", 2},
-	model.MetricVoltage:     {" V", 0},
-	model.MetricCO2:         {" ppm", 0},
-	model.MetricTemperature: {"°C", 1},
-	model.MetricHumidity:    {"%", 1},
-	model.MetricPressure:    {" hPa", 1},
-	model.MetricGasRatio:    {"", 2},
-	model.MetricDcVoltage:   {" V", 2},
-	model.MetricDcCurrent:   {" A", 3},
-	model.MetricDcPower:     {" W", 2},
-	model.MetricIlluminance: {" lx", 0},
-	model.MetricColorTemp:   {" K", 0},
-}
-
-func formatMetric(metric string, v float64) string {
-	u := metricUnits[metric]
-	return strconv.FormatFloat(v, 'f', u.precision, 64) + u.unit
+// FormatSeriesValue renders a value with the precision and unit of its kind ("21.5°C", "830 ppm").
+func FormatSeriesValue(kind string, v float64) string {
+	info, ok := model.Kinds[kind]
+	if !ok {
+		info = model.Kinds[model.KindRaw]
+	}
+	text := strconv.FormatFloat(v, 'f', info.Precision, 64)
+	switch info.Unit {
+	case "":
+		return text
+	case "°C", "%":
+		return text + info.Unit
+	default:
+		return text + " " + info.Unit
+	}
 }
 
 // humanDuration renders e.g. "3d 4h", "1h 5m" or "45s".

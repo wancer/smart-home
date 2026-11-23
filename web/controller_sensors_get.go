@@ -23,6 +23,9 @@ type SensorsController struct {
 	states *internal.DeviceStateManager
 }
 
+// GetMulti returns the recent values of the devices' series (dashboard sparklines),
+// GET /sensors?ids=1&ids=2: device ID -> SeriesChart (step = the first storage tier's; stored
+// buckets of the last 10 minutes or two first-tier steps, then each buffered reading).
 func (c *SensorsController) GetMulti(w http.ResponseWriter, r *http.Request) {
 	idParams := r.URL.Query()["ids"]
 	if len(idParams) == 0 {
@@ -47,9 +50,10 @@ func (c *SensorsController) GetMulti(w http.ResponseWriter, r *http.Request) {
 		states[uid] = state
 	}
 
-	result := map[uint][]*SensorEvent{}
+	now := time.Now()
+	result := map[uint]SeriesChart{}
 	for _, id := range deviceIds {
-		result[id] = []*SensorEvent{}
+		result[id] = SeriesChart{Series: map[uint][]SeriesPoint{}}
 	}
 
 	if len(deviceIds) > 0 {
@@ -59,7 +63,8 @@ func (c *SensorsController) GetMulti(w http.ResponseWriter, r *http.Request) {
 		for _, state := range states {
 			window = max(window, 2*state.Device.Tiers()[0].StepDuration())
 		}
-		stored, err := c.s.LoadRecentValues(r.Context(), deviceIds, time.Now().Add(-window))
+		since := now.Add(-window)
+		stored, err := c.s.LoadRecentValues(r.Context(), deviceIds, since)
 		if err != nil {
 			slog.Error("[sensors][multi] error", "err", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -68,21 +73,22 @@ func (c *SensorsController) GetMulti(w http.ResponseWriter, r *http.Request) {
 		buffer := c.s.GetBuffer()
 
 		for _, id := range deviceIds {
-			preferred := c.s.PreferredSeries(id)
-			// one record per stored bucket time (all series of the device)
-			for _, point := range valuesByTime(stored[id]) {
-				result[id] = append(result[id], newSensorEventFromValues(id, point.at, preferred, point.values))
-			}
-			// buffered (unflushed) readings as individual readings, one per message
-			var pending []model.SensorValue
+			chart := result[id]
+			chart.Step = int64(states[id].Device.Tiers()[0].Step)
+			chart.From, chart.To = since.Unix(), now.Unix()
+			// stored buckets, then buffered (unflushed) readings one by one
+			rows := stored[id]
 			for _, v := range buffer {
 				if v.DeviceId == id {
-					pending = append(pending, model.SensorValue{SeriesId: v.SeriesId, BucketTime: v.At, Count: 1, Avg: v.Value, Min: v.Value, Max: v.Value})
+					rows = append(rows, model.SensorValue{SeriesId: v.SeriesId, BucketTime: v.At, Count: 1, Avg: v.Value, Min: v.Value, Max: v.Value, Sum: v.Sum})
 				}
 			}
-			for _, point := range valuesByTime(pending) {
-				result[id] = append(result[id], newSensorEventFromValues(id, point.at, preferred, point.values))
+			for _, point := range valuesByTime(rows) {
+				for seriesId, v := range point.values {
+					chart.Series[seriesId] = append(chart.Series[seriesId], newSeriesPoint(point.at, v))
+				}
 			}
+			result[id] = chart
 		}
 	}
 

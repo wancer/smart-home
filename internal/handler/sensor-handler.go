@@ -11,7 +11,6 @@ import (
 func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.SensorEvent) {
 	now := time.Now()
 	state.ChipTemperature = e.ChipTemperature()
-	state.Raw = e.Raw
 	if e.Analog != nil {
 		state.Analog = e.Analog
 	}
@@ -55,13 +54,16 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 
 // handleBareTelemetry treats telemetry without the device's sensor data (IR remotes and
 // unrecognised devices: e.g. only the ESP32 chip temperature, SetOption146 1) as a sign of
-// life, on top of LWT. Whatever the message reports is still stored as series, but the live
-// values are left as they are.
+// life, on top of LWT. Whatever the message reports is still stored as series; it becomes the
+// live values only for IR remotes and unrecognised devices (a sensor device keeps the values of
+// its last full message).
 func (h *EventHandler) handleBareTelemetry(state *internal.DeviceState, e *event.SensorEvent, now *time.Time) {
-	h.storage.Store(state.Device.ID, *now, e.SeriesReadings())
+	values := h.storage.Store(state.Device.ID, *now, e.SeriesReadings())
 	if !state.Device.AvailabilityFromLwt() {
 		return
 	}
+	// IR remotes / unrecognised devices: whatever they report is their live state
+	state.SetValues(values)
 
 	state.LastUpdate = now
 	state.LastTelemetry = now

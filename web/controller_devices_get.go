@@ -39,7 +39,7 @@ func (c *DevicesController) GetAll(w http.ResponseWriter, r *http.Request) {
 
 	events := map[uint]*DeviceResponse{}
 	for _, state := range c.states.GetAll() {
-		event := NewDeviceResponse(state)
+		event := NewDeviceResponse(state, c.storage)
 		if state.LastUpdate != nil {
 			event.State.LastUpdate = new(state.LastUpdate.Unix())
 		}
@@ -66,7 +66,7 @@ func (c *DevicesController) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	normalized := NewDeviceResponse(device)
+	normalized := NewDeviceResponse(device, c.storage)
 	slog.Info("[device][get] success")
 	json.NewEncoder(w).Encode(normalized)
 }

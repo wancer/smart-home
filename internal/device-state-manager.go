@@ -66,23 +66,7 @@ type DeviceState struct {
 	On         *bool
 	LastUpdate *time.Time
 
-	Power   *uint
-	Current *float32
-	Voltage *uint
-	Today   *float32 // W*h
-
-	CO2         *uint
-	Temperature *float32
-	Humidity    *float32
-	DewPoint    *float32
-	Pressure    *float32 // hPa
-	GasRatio    *float32 // MQ-xxx gas level vs. calibration air
-	Illuminance *float32 // lx
-	ColorTemp   *float32 // K
-
-	DcVoltage *float32
-	DcCurrent *float32
-	DcPower   *float32
+	Today *float32 // kWh consumed today (ENERGY.Today); kept while offline
 
 	// Mq is the last MQ-xxx gas sensor reading (see ComputeMq), MqAt when it came; nil while offline
 	Mq        *event.MqReading
@@ -91,11 +75,8 @@ type DeviceState struct {
 	// Analog is the last raw ANALOG object (A1, ...), to offer the MQ sensor setup
 	Analog map[string]float32
 
-	// Raw is every numeric sensor field of the last telemetry (event.SensorEvent.Raw); nil while offline
-	Raw map[string]map[string]float64
 	// Values are the live series values of the last telemetry, keyed by sensor_series ID (series
-	// metadata: Storage.DeviceSeries); nil while offline. The fixed fields above (Power, ...)
-	// are kept for the current API until the clients use series.
+	// metadata: Storage.DeviceSeries); nil while offline.
 	Values map[uint]float64
 
 	ChipTemperature *float32   // ESP32 internal temperature (SetOption146 1)
@@ -107,13 +88,9 @@ type DeviceState struct {
 	RestartReason *string
 }
 
-// SetReadings replaces the live sensor values with the ones a telemetry message reported.
+// SetReadings keeps what a telemetry message reports besides the series values: today's energy total.
 func (s *DeviceState) SetReadings(r *event.Readings) {
-	s.Power, s.Current, s.Voltage, s.Today = r.Power, r.Current, r.Voltage, r.Today
-	s.CO2, s.Temperature, s.Humidity, s.DewPoint, s.Pressure = r.CO2, r.Temperature, r.Humidity, r.DewPoint, r.Pressure
-	s.DcVoltage, s.DcCurrent, s.DcPower = r.DcVoltage, r.DcCurrent, r.DcPower
-	s.GasRatio = r.GasRatio
-	s.Illuminance, s.ColorTemp = r.Illuminance, r.ColorTemp
+	s.Today = r.Today
 }
 
 // SetValues replaces the live series values with the ones a telemetry message reported.
@@ -125,7 +102,6 @@ func (s *DeviceState) SetValues(values map[uint]float64) {
 func (s *DeviceState) ClearReadings() {
 	s.SetReadings(&event.Readings{})
 	s.ClearMq()
-	s.Raw = nil
 	s.Values = nil
 }
 

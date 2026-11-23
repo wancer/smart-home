@@ -2,6 +2,7 @@ package internal
 
 import (
 	"cmp"
+	"context"
 	"slices"
 	"smart-home/event"
 	"smart-home/model"
@@ -44,13 +45,14 @@ func (c *seriesCache) add(s *model.SensorSeries) {
 	c.byId[s.Id] = s
 }
 
-// resolve returns the series of a reading, creating the row on first sight.
-func (c *seriesCache) resolve(deviceId uint, source, field string, now time.Time) (*model.SensorSeries, error) {
+// resolve returns the series of a reading, creating the row on first sight (created = it
+// wasn't cached).
+func (c *seriesCache) resolve(deviceId uint, source, field string, now time.Time) (s *model.SensorSeries, created bool, err error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	key := seriesKey{deviceId, source, field}
 	if s, ok := c.byKey[key]; ok {
-		return s, nil
+		return s, false, nil
 	}
 
 	now = now.UTC()
@@ -60,15 +62,34 @@ func (c *seriesCache) resolve(deviceId uint, source, field string, now time.Time
 	}
 	// DO NOTHING if it exists already; the ID is always read back, never trusted from the insert.
 	if err := c.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	var stored model.SensorSeries
-	err := c.db.Where("device_id = ? AND source = ? AND field = ?", deviceId, source, field).First(&stored).Error
+	err = c.db.Where("device_id = ? AND source = ? AND field = ?", deviceId, source, field).First(&stored).Error
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	c.add(&stored)
-	return &stored, nil
+	return &stored, true, nil
+}
+
+// get returns a copy of the series, false if it isn't known.
+func (c *seriesCache) get(id uint) (model.SensorSeries, bool) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if s, ok := c.byId[id]; ok {
+		return *s, true
+	}
+	return model.SensorSeries{}, false
+}
+
+// update sets the user-editable fields of a cached series.
+func (c *seriesCache) update(id uint, label *string, hidden bool) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if s, ok := c.byId[id]; ok {
+		s.Label, s.Hidden = label, hidden
+	}
 }
 
 // device returns copies of the device's series, sorted by source and field.
@@ -140,15 +161,30 @@ func (s *Storage) DeviceSeries(deviceId uint) []model.SensorSeries {
 	return s.series.device(deviceId)
 }
 
-// PreferredSeries returns the device's series IDs per kind, the preferred one first. It
-// fills the fixed per-metric fields of the current API: a dedicated temperature/humidity
-// sensor before a CO₂ sensor's, a light meter's illuminance before a colour sensor's, and
-// migrated (SourceLegacy) data last, so old and new data of one metric line up.
-func (s *Storage) PreferredSeries(deviceId uint) map[string][]uint {
-	return preferredSeries(s.series.device(deviceId))
+// Series returns one series (metadata), false if it doesn't exist.
+func (s *Storage) Series(id uint) (model.SensorSeries, bool) {
+	return s.series.get(id)
 }
 
-func preferredSeries(series []model.SensorSeries) map[string][]uint {
+// UpdateSeries sets a series' user-set label (nil = derived from kind/source) and hidden flag.
+func (s *Storage) UpdateSeries(ctx context.Context, id uint, label *string, hidden bool) error {
+	err := s.db.WithContext(ctx).Model(&model.SensorSeries{}).Where("id = ?", id).
+		Updates(map[string]any{"label": label, "hidden": hidden}).Error
+	if err != nil {
+		return err
+	}
+	s.series.update(id, label, hidden)
+	if series, ok := s.series.get(id); ok && s.OnSeriesChange != nil {
+		s.OnSeriesChange(series.DeviceId)
+	}
+	return nil
+}
+
+// PreferredSeriesOf returns one device's series IDs per kind, the preferred one first: a
+// dedicated temperature/humidity sensor before a CO₂ sensor's, a light meter's illuminance before
+// a colour sensor's, and migrated (SourceLegacy) data last. Used by the startup migration of
+// metric-key dashboard views and notification rules.
+func PreferredSeriesOf(series []model.SensorSeries) map[string][]uint {
 	hasKind := map[string]bool{}  // source + "\x00" + kind
 	hasField := map[string]bool{} // source + "\x00" + field
 	for _, s := range series {
@@ -178,15 +214,4 @@ func preferredSeries(series []model.SensorSeries) map[string][]uint {
 		result[s.Kind] = append(result[s.Kind], s.Id)
 	}
 	return result
-}
-
-// PickValue returns the first of the preferred series of the kind that has a value.
-func PickValue[V any](preferred map[string][]uint, kind string, values map[uint]V) (V, bool) {
-	for _, id := range preferred[kind] {
-		if v, ok := values[id]; ok {
-			return v, true
-		}
-	}
-	var zero V
-	return zero, false
 }

@@ -48,6 +48,9 @@ func Build(cfg *config.Config) (*Container, error) {
 	}
 
 	dispatcher := event.NewDispatcher()
+	storage.OnSeriesChange = func(deviceId uint) {
+		dispatcher.Dispatch(&event.SeriesChanged{DeviceId: deviceId})
+	}
 	eventParser := mqtt.NewEventParser(dispatcher)
 
 	consumer := mqtt.NewMqttConsumer(states, eventParser)
@@ -57,7 +60,7 @@ func Build(cfg *config.Config) (*Container, error) {
 	firmwareChecker := internal.NewFirmwareChecker()
 
 	telegram := internal.NewTelegramNotifier(cfg.Telegram.BotToken, cfg.Telegram.ChatID)
-	notifier := automation.NewNotifier(db, states, telegram)
+	notifier := automation.NewNotifier(db, states, storage, telegram)
 	if err := notifier.Reload(); err != nil {
 		return nil, err
 	}
@@ -69,7 +72,7 @@ func Build(cfg *config.Config) (*Container, error) {
 	eventHandler.Subscribe()
 
 	ws := web.NewWebSocketServer()
-	ws.Subscribe(dispatcher, states)
+	ws.Subscribe(dispatcher, states, storage) // after the handlers: reads their live values
 
 	authCfg, err := cfg.Web.AuthConfig()
 	if err != nil {
@@ -89,7 +92,7 @@ func Build(cfg *config.Config) (*Container, error) {
 	deviceRulesCtl := web.NewDeviceRulesController(publisher, states)
 	irCtl := web.NewIrController(db, states, publisher)
 	irRulesCtl := web.NewIrRulesController(db, states, irRunner)
-	notificationsCtl := web.NewNotificationsController(db, states, notifier, telegram)
+	notificationsCtl := web.NewNotificationsController(db, states, storage, notifier, telegram)
 
 	webServer := web.NewWebServer(
 		cfg.Web,

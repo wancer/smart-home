@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"smart-home/model"
@@ -70,7 +71,7 @@ func (c *DevicesController) Create(w http.ResponseWriter, r *http.Request) {
 	c.syncSubscription(device)
 	slog.Info("[device][create] success", "id", device.ID)
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(NewDeviceResponse(c.states.GetById(device.ID)))
+	json.NewEncoder(w).Encode(NewDeviceResponse(c.states.GetById(device.ID), c.storage))
 }
 
 func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
@@ -105,32 +106,43 @@ func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
 
 	c.syncSubscription(device)
 	slog.Info("[device][update] success", "id", device.ID)
-	json.NewEncoder(w).Encode(NewDeviceResponse(state))
+	json.NewEncoder(w).Encode(NewDeviceResponse(state, c.storage))
 }
 
-// UpdateDashboard sets what the dashboard shows for the device (chart metric, shown values).
+// UpdateDashboard sets what the dashboard shows for the device (model.DashboardView:
+// {chart: seriesId|null, noChart, values: [seriesId]|null}).
 func (c *DevicesController) UpdateDashboard(w http.ResponseWriter, r *http.Request) {
 	state := deviceState(w, r, c.states)
 	if state == nil {
 		return
 	}
+	deviceId := state.Device.ID
 
-	var view model.DashboardView
-	if err := json.NewDecoder(r.Body).Decode(&view); err != nil {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+	if err != nil {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	if err := model.ValidateDashboardView(view); err != nil {
+	var view model.DashboardView
+	if err := json.Unmarshal(body, &view); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	owned := func(id uint) bool {
+		s, ok := c.storage.Series(id)
+		return ok && s.DeviceId == deviceId
+	}
+	if err := model.ValidateDashboardView(view, owned); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	device := state.Device
 	device.Dashboard = &view
-	if view.Chart == model.DashboardChartAuto && view.Values == nil {
+	if view.IsAuto() {
 		device.Dashboard = nil
 	}
-	err := c.db.WithContext(r.Context()).Model(device).Select("Dashboard").Updates(device).Error
+	err = c.db.WithContext(r.Context()).Model(device).Select("Dashboard").Updates(device).Error
 	if err != nil {
 		slog.Error("[device][dashboard] error", "err", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -138,7 +150,7 @@ func (c *DevicesController) UpdateDashboard(w http.ResponseWriter, r *http.Reque
 	}
 
 	slog.Info("[device][dashboard] success", "id", device.ID)
-	json.NewEncoder(w).Encode(NewDeviceResponse(state))
+	json.NewEncoder(w).Encode(NewDeviceResponse(state, c.storage))
 }
 
 func (c *DevicesController) Delete(w http.ResponseWriter, r *http.Request) {
@@ -223,5 +235,5 @@ func (c *DevicesController) RefreshProfile(w http.ResponseWriter, r *http.Reques
 	state.ProfileRefresh = false
 
 	slog.Info("[device][profile-refresh] success", "id", state.Device.ID, "sensorType", state.Device.SensorType)
-	json.NewEncoder(w).Encode(NewDeviceResponse(state))
+	json.NewEncoder(w).Encode(NewDeviceResponse(state, c.storage))
 }

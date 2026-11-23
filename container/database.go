@@ -51,7 +51,14 @@ func (init *DatabaseInitializer) migrate() error {
 	if err := init.dropTables(); err != nil {
 		return err
 	}
-	return init.migrateSeries()
+	if err := init.migrateSeries(); err != nil {
+		return err
+	}
+	// after the series migration, which creates the series of the migrated data
+	if err := init.migrateDashboardViews(); err != nil {
+		return err
+	}
+	return init.migrateNotifyRules()
 }
 
 // dropTables removes tables that are no longer used. It is a no-op once they are gone.

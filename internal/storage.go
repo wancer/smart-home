@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"smart-home/config"
 	"smart-home/event"
 	"smart-home/model"
@@ -33,21 +34,25 @@ const (
 )
 
 type Storage struct {
-	db                *gorm.DB
-	series            *seriesCache
-	buffer            []BufferedValue
-	lock              *sync.Mutex // guards buffer and lastReading
+	db     *gorm.DB
+	series *seriesCache
+	buffer []BufferedValue
+	lock   *sync.Mutex // guards buffer and lastReading
 	// writeLock serialises the writers of sensor_value: a flush, a series' rollup/retention, the
 	// chip temperature prune and a device's series deletion (DeleteDevice), so nothing is written
 	// into a series while it is deleted.
 	writeLock sync.Mutex
 	done      chan struct{} // closed by the storage goroutine after its final flush
 	// flushFailures counts flushes failed in a row (guarded by writeLock)
-	flushFailures int
+	flushFailures     int
 	lastHistory       map[uint]string
 	bufferFlushStream chan struct{}
 	deviceMap         *DeviceStateManager
 	lastReading       map[uint]time.Time // last power reading per device, for its energy
+	// OnSeriesChange, if set, is called after a reading created one or more series of the device
+	// or a series' label/hidden flag changed (to push the metadata to the clients). Set it
+	// before readings arrive.
+	OnSeriesChange func(deviceId uint)
 }
 
 // SensorHistorySize is the number of stored rows per sensor table for a device.
@@ -330,14 +335,19 @@ func (s *Storage) Store(deviceId uint, at time.Time, readings []event.Reading) m
 func (s *Storage) resolveReadings(deviceId uint, readings []event.Reading, at time.Time) (map[uint]float64, map[uint]string) {
 	values := make(map[uint]float64, len(readings))
 	kinds := make(map[uint]string, len(readings))
+	anyCreated := false
 	for _, r := range readings {
-		series, err := s.series.resolve(deviceId, r.Source, r.Field, at)
+		series, created, err := s.series.resolve(deviceId, r.Source, r.Field, at)
 		if err != nil {
 			slog.Error("create sensor series", "device_id", deviceId, "source", r.Source, "field", r.Field, "err", err)
 			continue
 		}
+		anyCreated = anyCreated || created
 		values[series.Id] = r.Value
 		kinds[series.Id] = series.Kind
+	}
+	if anyCreated && s.OnSeriesChange != nil {
+		s.OnSeriesChange(deviceId)
 	}
 	return values, kinds
 }
@@ -365,7 +375,16 @@ func (s *Storage) StoreDaily(e *event.SensorEvent, deviceId uint) {
 // LoadValues returns the stored values of the device's series with bucket start in
 // [from, end), plus the unflushed buffer.
 func (s *Storage) LoadValues(ctx context.Context, deviceId uint, from, end time.Time) ([]model.SensorValue, error) {
+	return s.LoadSeriesValues(ctx, deviceId, nil, from, end)
+}
+
+// LoadSeriesValues is LoadValues limited to the given series of the device (nil = all; IDs
+// of other devices' series are ignored).
+func (s *Storage) LoadSeriesValues(ctx context.Context, deviceId uint, only []uint, from, end time.Time) ([]model.SensorValue, error) {
 	ids := s.series.deviceIds(deviceId)
+	if only != nil {
+		ids = slices.DeleteFunc(ids, func(id uint) bool { return !slices.Contains(only, id) })
+	}
 	var rows []model.SensorValue
 	if len(ids) > 0 {
 		err := s.db.WithContext(ctx).
@@ -378,7 +397,12 @@ func (s *Storage) LoadValues(ctx context.Context, deviceId uint, from, end time.
 			return nil, err
 		}
 	}
-	return append(rows, s.GetBufferAggregates(deviceId)...), nil
+	for _, v := range s.GetBufferAggregates(deviceId) {
+		if slices.Contains(ids, v.SeriesId) {
+			rows = append(rows, v)
+		}
+	}
+	return rows, nil
 }
 
 // LoadRecentValues returns the stored values of the devices' series with bucket start after

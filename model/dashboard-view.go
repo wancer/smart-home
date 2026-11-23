@@ -41,9 +41,8 @@ func ValidateDashboardView(v DashboardView, owned func(seriesId uint) bool) erro
 	return nil
 }
 
-// Legacy dashboard view and metric keys: the fixed per-metric JSON keys of the old API (device
-// state, sensor events, and the dashboard view before series), still served to the Android app
-// until it moves to series (then remove all of this).
+// Legacy dashboard view by metric key (the API before series): only read by the one-off startup
+// migration of stored views (container/series-views-migration.go); remove with it.
 
 const (
 	LegacyChartAuto = ""     // the first metric the device reports
@@ -71,37 +70,6 @@ var MetricKeyKinds = map[string]string{
 	"dcPower":     KindDcPower,
 	"dcCurrent":   KindDcCurrent,
 	"dcVoltage":   KindDcVoltage,
-}
-
-// KindMetricKey is the old API's metric key of a kind, "" if it has none.
-func KindMetricKey(kind string) string {
-	for key, k := range MetricKeyKinds {
-		if k == kind {
-			return key
-		}
-	}
-	return ""
-}
-
-// ToLegacy maps a series view to metric keys by the series' kinds (kindOf returns "" for an
-// unknown series). Series without a metric key are left out; a chart series without one is auto.
-func (v DashboardView) ToLegacy(kindOf func(seriesId uint) string) LegacyDashboardView {
-	var legacy LegacyDashboardView
-	switch {
-	case v.NoChart:
-		legacy.Chart = LegacyChartNone
-	case v.Chart != nil:
-		legacy.Chart = KindMetricKey(kindOf(*v.Chart))
-	}
-	if v.Values != nil {
-		legacy.Values = []string{}
-		for _, id := range v.Values {
-			if key := KindMetricKey(kindOf(id)); key != "" && !slices.Contains(legacy.Values, key) {
-				legacy.Values = append(legacy.Values, key)
-			}
-		}
-	}
-	return legacy
 }
 
 // FromLegacy maps a metric-key view to series: each key takes the device's first preferred

@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
-	"slices"
 	"smart-home/automation"
 	"smart-home/internal"
 	"smart-home/model"
@@ -19,6 +18,7 @@ import (
 type NotificationsController struct {
 	db       *gorm.DB
 	states   *internal.DeviceStateManager
+	storage  *internal.Storage
 	notifier *automation.Notifier
 	telegram *internal.TelegramNotifier
 }
@@ -26,15 +26,16 @@ type NotificationsController struct {
 func NewNotificationsController(
 	db *gorm.DB,
 	states *internal.DeviceStateManager,
+	storage *internal.Storage,
 	notifier *automation.Notifier,
 	telegram *internal.TelegramNotifier,
 ) *NotificationsController {
-	return &NotificationsController{db: db, states: states, notifier: notifier, telegram: telegram}
+	return &NotificationsController{db: db, states: states, storage: storage, notifier: notifier, telegram: telegram}
 }
 
 type NotifyRuleRequest struct {
-	Kind           string  `json:"kind"`             // offline | online | above | below
-	Metric         string  `json:"metric,omitempty"` // above/below: power | current | voltage | co2 | temperature | humidity
+	Kind           string  `json:"kind"`               // offline | online | above | below
+	SeriesId       *uint   `json:"seriesId,omitempty"` // above/below: a series of the device
 	Threshold      float64 `json:"threshold,omitempty"`
 	Duration       int     `json:"duration"` // seconds
 	NotifyRecovery bool    `json:"notifyRecovery,omitempty"`
@@ -45,17 +46,20 @@ type NotifyRuleRequest struct {
 type NotifyRuleResponse struct {
 	ID uint `json:"id"`
 	NotifyRuleRequest
-	Active bool `json:"active"` // fired and not recovered yet
+	// Metric is the legacy metric of a rule made before series whose series couldn't be found
+	// (the rule was disabled by the migration); empty otherwise.
+	Metric string `json:"metric,omitempty"`
+	Active bool   `json:"active"` // fired and not recovered yet
 }
 
 type NotificationsResponse struct {
 	TelegramConfigured bool                 `json:"telegramConfigured"`
-	Metrics            []string             `json:"metrics"` // metrics available for this device
+	Series             []SeriesResponse     `json:"series"` // the device's series (threshold rules pick one)
 	Rules              []NotifyRuleResponse `json:"rules"`
 }
 
 // validateNotifyRule normalises the request and returns a human-readable problem, or "".
-func validateNotifyRule(device *model.Device, req *NotifyRuleRequest) string {
+func (c *NotificationsController) validateNotifyRule(device *model.Device, req *NotifyRuleRequest) string {
 	req.Message = strings.TrimSpace(req.Message)
 	if utf8.RuneCountInString(req.Message) > 255 {
 		return "message must be at most 255 characters"
@@ -66,16 +70,15 @@ func validateNotifyRule(device *model.Device, req *NotifyRuleRequest) string {
 
 	switch req.Kind {
 	case model.NotifyOffline:
-		req.Metric, req.Threshold = "", 0
+		req.SeriesId, req.Threshold = nil, 0
 	case model.NotifyOnline:
-		req.Metric, req.Threshold, req.NotifyRecovery = "", 0, false
+		req.SeriesId, req.Threshold, req.NotifyRecovery = nil, 0, false
 	case model.NotifyAbove, model.NotifyBelow:
-		metrics := model.MetricsBySensorType[device.SensorType]
-		if !slices.Contains(metrics, req.Metric) {
-			if len(metrics) == 0 {
-				return "this device has no sensors for threshold notifications"
-			}
-			return "metric must be one of: " + strings.Join(metrics, ", ")
+		if req.SeriesId == nil {
+			return "seriesId is required"
+		}
+		if s, ok := c.storage.Series(*req.SeriesId); !ok || s.DeviceId != device.ID {
+			return "seriesId must be a series of this device"
 		}
 		if math.IsNaN(req.Threshold) || math.IsInf(req.Threshold, 0) {
 			return "threshold must be a number"
@@ -87,18 +90,23 @@ func validateNotifyRule(device *model.Device, req *NotifyRuleRequest) string {
 }
 
 func (c *NotificationsController) toResponse(rule *model.NotifyRule) NotifyRuleResponse {
-	return NotifyRuleResponse{
+	resp := NotifyRuleResponse{
 		ID: rule.ID,
 		NotifyRuleRequest: NotifyRuleRequest{
-			Kind: rule.Kind, Metric: rule.Metric, Threshold: rule.Threshold, Duration: rule.DurationSec,
+			Kind: rule.Kind, SeriesId: rule.SeriesId, Threshold: rule.Threshold, Duration: rule.DurationSec,
 			NotifyRecovery: rule.NotifyRecovery, Message: rule.Message, Enabled: rule.Enabled,
 		},
 		Active: rule.Enabled && c.notifier.Active(rule.ID),
 	}
+	if rule.UsesThreshold() && rule.SeriesId == nil {
+		resp.Metric = rule.Metric
+	}
+	return resp
 }
 
 func (c *NotificationsController) apply(rule *model.NotifyRule, req *NotifyRuleRequest) {
-	rule.Kind, rule.Metric, rule.Threshold, rule.DurationSec = req.Kind, req.Metric, req.Threshold, req.Duration
+	rule.Kind, rule.SeriesId, rule.Threshold, rule.DurationSec = req.Kind, req.SeriesId, req.Threshold, req.Duration
+	rule.Metric = "" // legacy, replaced by the series
 	rule.NotifyRecovery, rule.Message, rule.Enabled = req.NotifyRecovery, req.Message, req.Enabled
 }
 
@@ -124,11 +132,8 @@ func (c *NotificationsController) Get(w http.ResponseWriter, r *http.Request) {
 
 	out := NotificationsResponse{
 		TelegramConfigured: c.telegram.Enabled(),
-		Metrics:            model.MetricsBySensorType[device.SensorType],
+		Series:             newSeriesList(c.storage.DeviceSeries(device.ID)),
 		Rules:              make([]NotifyRuleResponse, len(rules)),
-	}
-	if out.Metrics == nil {
-		out.Metrics = []string{}
 	}
 	for i := range rules {
 		out.Rules[i] = c.toResponse(&rules[i])
@@ -147,7 +152,7 @@ func (c *NotificationsController) Create(w http.ResponseWriter, r *http.Request)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	if msg := validateNotifyRule(device, &req); msg != "" {
+	if msg := c.validateNotifyRule(device, &req); msg != "" {
 		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}
@@ -188,7 +193,7 @@ func (c *NotificationsController) Update(w http.ResponseWriter, r *http.Request)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	if msg := validateNotifyRule(device, &req); msg != "" {
+	if msg := c.validateNotifyRule(device, &req); msg != "" {
 		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}

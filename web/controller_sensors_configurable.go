@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"math"
+	"maps"
 	"net/http"
+	"slices"
 	"smart-home/internal"
 	"smart-home/model"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -63,28 +65,14 @@ func (c *SensorsConfigurableController) Get(w http.ResponseWriter, r *http.Reque
 		till = time.Now().Truncate(time.Minute)
 	}
 
-	var records []DeviceSensorEvent
-	if scaleParam == rawScale {
-		if duration <= 0 || duration > maxRawDuration {
+	var only []uint // nil = every series of the device (no ?series, "" or "all")
+	if seriesParam, ok := r.URL.Query()["series"]; ok {
+		if only, ok = parseSeriesIds(seriesParam); !ok {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
-		records, err = c.rawRecords(r.Context(), state, duration, till)
-	} else {
-		if scale <= 0 || duration <= 0 || duration/scale > maxChartPoints {
-			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-			return
-		}
-		records, err = c.buildRecords(r.Context(), state, duration, scale, till)
 	}
-	if err != nil {
-		slog.Error("[sensors][configurable] error", "err", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
-	slog.Info("[sensors][configurable] success")
-	json.NewEncoder(w).Encode(records)
+	c.getSeries(w, r, state, only, duration, scaleParam == rawScale, scale, till)
 }
 
 // maxChartPoints caps duration/scale, e.g. 24h at a 15s step is 5760 points.
@@ -97,50 +85,21 @@ const (
 	maxRawDuration = 24 * time.Hour
 )
 
-// rawRecords returns the rows in (till-duration, till] by time, one point per bucket time
-// (all series of the device). till is truncated to the minute, so the range runs a minute
-// past it to include the latest readings.
-func (c *SensorsConfigurableController) rawRecords(
+// stepValues merges the rows of the device's series (only = nil: all) into clock-aligned
+// steps: per step, series ID -> merged value (nil for an empty step). It returns the steps,
+// the first step's start and the step actually used (raised to the coarsest stored bucket).
+func (c *SensorsConfigurableController) stepValues(
 	ctx context.Context,
-	state *internal.DeviceState,
-	duration time.Duration,
-	till time.Time,
-) ([]DeviceSensorEvent, error) {
-	rows, err := c.buffer.LoadValues(ctx, state.Device.ID, till.Add(-duration), till.Add(time.Minute))
-	if err != nil {
-		return nil, err
-	}
-	preferred := c.buffer.PreferredSeries(state.Device.ID)
-
-	// a buffered reading can share its second with a stored one: valuesByTime merges them
-	points := valuesByTime(rows)
-	records := make([]DeviceSensorEvent, 0, len(points))
-	for _, p := range points {
-		records = append(records, newDeviceSensorEvent(p.at, preferred, p.values))
-	}
-	return records, nil
-}
-
-// buildRecords returns one point per scale step. Points are aligned to the clock
-// (xx:00, xx:05, xx:10 for a 5m scale); each is labelled with its bucket start and covers
-// [t, t+scale), matching the frontend's live WebSocket buckets (floor(time / scale) * scale).
-// The last point is the in-progress bucket.
-//
-// When the range holds buckets coarser than scale (see model.StorageTier), the step is
-// raised to the coarsest one, so the chart doesn't alternate between data and gaps. The
-// step actually used shows in the points' times.
-func (c *SensorsConfigurableController) buildRecords(
-	ctx context.Context,
-	state *internal.DeviceState,
+	deviceId uint,
+	only []uint,
 	duration time.Duration,
 	scale time.Duration,
 	till time.Time,
-) ([]DeviceSensorEvent, error) {
-	deviceId := state.Device.ID
+) ([]map[uint]*model.SensorValue, time.Time, time.Duration, error) {
 	from, end := chartRange(till, duration, scale)
-	rows, err := c.buffer.LoadValues(ctx, deviceId, from, end)
+	rows, err := c.buffer.LoadSeriesValues(ctx, deviceId, only, from, end)
 	if err != nil {
-		return nil, err
+		return nil, from, scale, err
 	}
 
 	if coarsest := coarsestBucket(rows); coarsest > scale {
@@ -149,8 +108,8 @@ func (c *SensorsConfigurableController) buildRecords(
 		end = newEnd
 		if wider.Before(from) {
 			from = wider
-			if rows, err = c.buffer.LoadValues(ctx, deviceId, from, end); err != nil {
-				return nil, err
+			if rows, err = c.buffer.LoadSeriesValues(ctx, deviceId, only, from, end); err != nil {
+				return nil, from, scale, err
 			}
 		}
 	}
@@ -173,14 +132,105 @@ func (c *SensorsConfigurableController) buildRecords(
 			points[idx][v.SeriesId] = &v
 		}
 	}
+	return points, from, scale, nil
+}
 
-	preferred := c.buffer.PreferredSeries(deviceId)
-	records := make([]DeviceSensorEvent, len(points))
-	for i, point := range points {
-		at := from.Add(time.Duration(i) * scale)
-		records[i] = newDeviceSensorEvent(at, preferred, point)
+// SeriesChart is a chart by series (GET /sensors/{duration}/{scale}?series=...): the points of
+// each requested series that has data in [from, to). Step is the step used in seconds (raised
+// to the coarsest stored bucket in range, like the fixed-field chart), 0 for raw.
+type SeriesChart struct {
+	Step   int64                  `json:"step"`
+	From   int64                  `json:"from"`
+	To     int64                  `json:"to"`
+	Series map[uint][]SeriesPoint `json:"series"`
+}
+
+// SeriesPoint is one bucket of a series: time is the bucket (step) start; sum is the energy
+// (Wh) of power series, null otherwise.
+type SeriesPoint struct {
+	Time  int64    `json:"time"`
+	Avg   float64  `json:"avg"`
+	Min   float64  `json:"min"`
+	Max   float64  `json:"max"`
+	Sum   *float64 `json:"sum,omitempty"`
+	Count uint     `json:"count"`
+}
+
+func newSeriesPoint(at time.Time, v *model.SensorValue) SeriesPoint {
+	return SeriesPoint{Time: at.Unix(), Avg: v.Avg, Min: v.Min, Max: v.Max, Sum: v.Sum, Count: v.Count}
+}
+
+// parseSeriesIds reads ?series=1,2 (or repeated ?series=1&series=2); "" or "all" = every
+// series of the device (nil).
+func parseSeriesIds(params []string) ([]uint, bool) {
+	var ids []uint
+	for _, param := range params {
+		for part := range strings.SplitSeq(param, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" || part == "all" {
+				continue
+			}
+			id, err := strconv.ParseUint(part, 10, 32)
+			if err != nil {
+				return nil, false
+			}
+			ids = append(ids, uint(id))
+		}
 	}
-	return records, nil
+	return ids, true
+}
+
+func (c *SensorsConfigurableController) getSeries(
+	w http.ResponseWriter,
+	r *http.Request,
+	state *internal.DeviceState,
+	only []uint,
+	duration time.Duration,
+	raw bool,
+	scale time.Duration,
+	till time.Time,
+) {
+	deviceId := state.Device.ID
+	chart := SeriesChart{Series: map[uint][]SeriesPoint{}}
+	if raw {
+		if duration <= 0 || duration > maxRawDuration {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		from, end := till.Add(-duration), till.Add(time.Minute)
+		rows, err := c.buffer.LoadSeriesValues(r.Context(), deviceId, only, from, end)
+		if err != nil {
+			slog.Error("[sensors][series] error", "err", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		chart.From, chart.To = from.Unix(), end.Unix()
+		for _, p := range valuesByTime(rows) {
+			for id, v := range p.values {
+				chart.Series[id] = append(chart.Series[id], newSeriesPoint(p.at, v))
+			}
+		}
+	} else {
+		if scale <= 0 || duration <= 0 || duration/scale > maxChartPoints {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		points, from, step, err := c.stepValues(r.Context(), deviceId, only, duration, scale, till)
+		if err != nil {
+			slog.Error("[sensors][series] error", "err", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		chart.Step = int64(step / time.Second)
+		chart.From, chart.To = from.Unix(), from.Add(time.Duration(len(points))*step).Unix()
+		for i, point := range points {
+			at := from.Add(time.Duration(i) * step)
+			for _, id := range slices.Sorted(maps.Keys(point)) {
+				chart.Series[id] = append(chart.Series[id], newSeriesPoint(at, point[id]))
+			}
+		}
+	}
+	json.NewEncoder(w).Encode(chart)
 }
 
 func chartRange(till time.Time, duration, scale time.Duration) (time.Time, time.Time) {
@@ -198,60 +248,4 @@ func coarsestBucket(rows []model.SensorValue) time.Duration {
 		coarsest = max(coarsest, row.BucketSeconds)
 	}
 	return time.Duration(coarsest) * time.Second
-}
-
-// newDeviceSensorEvent maps a merged step (series ID -> value) to a chart point: each fixed
-// field takes the first preferred series of its kind with a value. values is nil for an
-// empty step.
-func newDeviceSensorEvent(at time.Time, preferred map[string][]uint, values map[uint]*model.SensorValue) DeviceSensorEvent {
-	record := DeviceSensorEvent{Time: at.Unix()}
-	if values == nil {
-		return record
-	}
-	pick := func(kind string) *model.SensorValue {
-		v, _ := internal.PickValue(preferred, kind, values)
-		return v
-	}
-	f32 := func(v *model.SensorValue) (avg, lo, hi *float32) {
-		if v == nil {
-			return nil, nil, nil
-		}
-		return new(float32(v.Avg)), new(float32(v.Min)), new(float32(v.Max))
-	}
-	u := func(v *model.SensorValue) (avg, lo, hi *uint) {
-		a, l, h := f32(v)
-		return toUint(a), toUint(l), toUint(h)
-	}
-
-	if power := pick(model.KindPower); power != nil {
-		record.PowerConsumed = new(float32(0))
-		if power.Sum != nil {
-			record.PowerConsumed = new(float32(*power.Sum))
-		}
-		record.PowerAvg, record.PowerMin, record.PowerMax = u(power)
-	}
-	record.CurrentAvg, record.CurrentMin, record.CurrentMax = f32(pick(model.KindCurrent))
-	record.VoltageAvg, record.VoltageMin, record.VoltageMax = u(pick(model.KindVoltage))
-
-	record.CO2Avg, record.CO2Min, record.CO2Max = u(pick(model.KindCo2))
-	record.TemperatureAvg, record.TemperatureMin, record.TemperatureMax = f32(pick(model.KindTemperature))
-	record.HumidityAvg, record.HumidityMin, record.HumidityMax = f32(pick(model.KindHumidity))
-	record.PressureAvg, record.PressureMin, record.PressureMax = f32(pick(model.KindPressure))
-	record.GasRatioAvg, record.GasRatioMin, record.GasRatioMax = f32(pick(model.KindGasRatio))
-	record.IlluminanceAvg, record.IlluminanceMin, record.IlluminanceMax = f32(pick(model.KindIlluminance))
-	record.ColorTempAvg, record.ColorTempMin, record.ColorTempMax = f32(pick(model.KindColorTemp))
-
-	record.DcVoltageAvg, record.DcVoltageMin, record.DcVoltageMax = f32(pick(model.KindDcVoltage))
-	record.DcCurrentAvg, record.DcCurrentMin, record.DcCurrentMax = f32(pick(model.KindDcCurrent))
-	record.DcPowerAvg, record.DcPowerMin, record.DcPowerMax = f32(pick(model.KindDcPower))
-
-	record.ChipTemperatureAvg, _, _ = f32(pick(model.KindChipTemperature))
-	return record
-}
-
-func toUint(v *float32) *uint {
-	if v == nil {
-		return nil
-	}
-	return new(uint(math.Round(float64(max(0, *v)))))
 }
