@@ -2,6 +2,8 @@ package model
 
 import "time"
 
+// SensorEvent is one reading, buffered in memory until Storage flushes it into
+// sensor_aggregate. It is not stored as is (the legacy sensor_event table was dropped).
 type SensorEvent struct {
 	ID         uint      `gorm:"primaryKey"`
 	DeviceId   uint      `gorm:"not null;index:idx_device_time,priority:2"`
@@ -22,19 +24,17 @@ type SensorEvent struct {
 	Humidity    *float32
 	DewPoint    *float32
 
-	// Only buffered for sensor_aggregate, like ChipTemperature: sensor_event is legacy.
 	Pressure  *float32 `gorm:"-"` // hPa
 	DcVoltage *float32 `gorm:"-"`
 	DcCurrent *float32 `gorm:"-"`
 	DcPower   *float32 `gorm:"-"`
-	Gas       *float32 `gorm:"-"` // ppm, MQ-xxx
+	GasRatio  *float32 `gorm:"-"` // MQ-xxx, 1.0 = calibration air
+	GasRs     *float32 `gorm:"-"` // MQ-xxx sensor resistance, Ω, uncorrected
 
-	// ChipTemperature is only buffered for sensor_aggregate; sensor_event is no longer written.
+	Illuminance *float32 `gorm:"-"` // lx
+	ColorTemp   *float32 `gorm:"-"` // K
+
 	ChipTemperature *float32 `gorm:"-"`
 	// EnergyWh is the energy this power reading stands for (set by Storage.Store).
 	EnergyWh *float32 `gorm:"-"`
-}
-
-func (SensorEvent) TableName() string {
-	return "sensor_event"
 }

@@ -49,7 +49,6 @@ func (c *DevicesController) GetAll(w http.ResponseWriter, r *http.Request) {
 			event.SensorHistory = &SensorHistorySize{
 				Aggregates: size.Aggregates,
 				Daily:      size.Daily,
-				Archived:   size.Archived,
 				Oldest:     size.Oldest,
 			}
 		}

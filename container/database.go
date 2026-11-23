@@ -20,9 +20,6 @@ func (init *DatabaseInitializer) migrate() error {
 	if err := init.db.AutoMigrate(&model.Device{}); err != nil {
 		return err
 	}
-	if err := init.db.AutoMigrate(&model.SensorEvent{}); err != nil {
-		return err
-	}
 	if err := init.db.AutoMigrate(&model.SensorHistory{}); err != nil {
 		return err
 	}
@@ -41,8 +38,22 @@ func (init *DatabaseInitializer) migrate() error {
 	if err := init.dropColumns(); err != nil {
 		return err
 	}
-	if err := init.backfillAggregates(); err != nil {
-		return err
+	return init.dropTables()
+}
+
+// dropTables removes tables that are no longer used. It is a no-op once they are gone.
+// Run VACUUM to shrink the file.
+//   - sensor_event: legacy raw readings, copied into sensor_aggregate on the first boot after
+//     the aggregates were introduced and never read since
+func (init *DatabaseInitializer) dropTables() error {
+	for _, table := range []string{"sensor_event"} {
+		if !init.db.Migrator().HasTable(table) {
+			continue
+		}
+		slog.Info("Dropping table", "table", table)
+		if err := init.db.Migrator().DropTable(table); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -53,6 +64,8 @@ func (init *DatabaseInitializer) migrate() error {
 //   - eCO2: Tasmota stopped reporting it in v15.5.0
 //   - device.supports_toggle: derived from the relays in the stored template now
 //   - device.store_chip_temp: the chip temperature is stored for every device reporting it
+//   - gas_*: an MQ ppm value from Tasmota's ANALOG MQ*_1, replaced by gas_ratio_* / gas_rs_*
+//   - device.mq_calibration: R0 of the MQ Berry script, replaced by device.mq (computed in the backend)
 func (init *DatabaseInitializer) dropColumns() error {
 	columns := []struct {
 		model  any
@@ -60,9 +73,12 @@ func (init *DatabaseInitializer) dropColumns() error {
 		column string
 	}{
 		{&model.SensorAggregate{}, "sensor_aggregate", "co2e_avg"},
-		{&model.SensorEvent{}, "sensor_event", "co2e"},
 		{&model.Device{}, "device", "supports_toggle"},
 		{&model.Device{}, "device", "store_chip_temp"},
+		{&model.SensorAggregate{}, "sensor_aggregate", "gas_avg"},
+		{&model.SensorAggregate{}, "sensor_aggregate", "gas_min"},
+		{&model.SensorAggregate{}, "sensor_aggregate", "gas_max"},
+		{&model.Device{}, "device", "mq_calibration"},
 	}
 	for _, c := range columns {
 		if !init.db.Migrator().HasColumn(c.model, c.column) {
@@ -73,66 +89,6 @@ func (init *DatabaseInitializer) dropColumns() error {
 			return err
 		}
 	}
-	return nil
-}
-
-// backfillAggregates populates sensor_aggregate from sensor_event on first run.
-// It groups raw 15-sec records into 5-minute UTC buckets (bucket_seconds defaults to 300) using SQLite's datetime()
-// so that mixed +00:00/+03:00 offsets in historical data are normalised correctly.
-func (init *DatabaseInitializer) backfillAggregates() error {
-	var aggCount int64
-	if err := init.db.Model(&model.SensorAggregate{}).Count(&aggCount).Error; err != nil {
-		return err
-	}
-	if aggCount > 0 {
-		return nil // already migrated
-	}
-
-	var eventCount int64
-	if err := init.db.Model(&model.SensorEvent{}).Count(&eventCount).Error; err != nil {
-		return err
-	}
-	if eventCount == 0 {
-		return nil // nothing to migrate
-	}
-
-	slog.Info("Backfilling sensor_aggregate from sensor_event", "rows", eventCount)
-
-	sql := `
-INSERT INTO sensor_aggregate
-    (device_id, bucket_time, count,
-     power_consumed, power_avg, power_min, power_max,
-     current_avg, current_min, current_max,
-     voltage_avg, voltage_min, voltage_max,
-     co2_avg, co2_min, co2_max,
-     temperature_avg, temperature_min, temperature_max,
-     humidity_avg, humidity_min, humidity_max,
-     dew_point_avg)
-SELECT
-    device_id,
-    datetime(
-        (strftime('%s', datetime(real_time)) / 300) * 300,
-        'unixepoch'
-    ) AS bucket_time,
-    COUNT(*)                                              AS count,
-    SUM(CAST(power    AS REAL) * 15.0 / 3600.0)         AS power_consumed,
-    AVG(power), MIN(power), MAX(power),
-    AVG(current), MIN(current), MAX(current),
-    AVG(voltage), MIN(voltage), MAX(voltage),
-    AVG(co2), MIN(co2), MAX(co2),
-    AVG(temperature), MIN(temperature), MAX(temperature),
-    AVG(humidity), MIN(humidity), MAX(humidity),
-    AVG(dew_point)                                        AS dew_point_avg
-FROM sensor_event
-GROUP BY device_id, bucket_time
-`
-	if err := init.db.Exec(sql).Error; err != nil {
-		return err
-	}
-
-	var inserted int64
-	init.db.Model(&model.SensorAggregate{}).Count(&inserted)
-	slog.Info("Backfill complete", "aggregates_written", inserted)
 	return nil
 }
 

@@ -15,6 +15,11 @@ func (h *EventHandler) HandleState(state *internal.DeviceState, e *event.Status1
 	now := time.Now()
 	sns := e.StatusSNS
 	state.ChipTemperature = sns.ChipTemperature()
+	state.Raw = sns.Raw
+	if sns.Analog != nil {
+		state.Analog = sns.Analog
+	}
+	state.ComputeMq(sns, now)
 
 	force := state.ProfileRefresh
 	state.ProfileRefresh = false

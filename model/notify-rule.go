@@ -15,10 +15,12 @@ const (
 	MetricTemperature = "temperature" // °C
 	MetricHumidity    = "humidity"    // %
 	MetricPressure    = "pressure"    // hPa
-	MetricGas         = "gas"         // ppm, MQ-xxx
+	MetricGasRatio    = "gas_ratio"   // MQ-xxx gas level, 1.0 = calibration air
 	MetricDcVoltage   = "dc_voltage"  // V
 	MetricDcCurrent   = "dc_current"  // A
 	MetricDcPower     = "dc_power"    // W
+	MetricIlluminance = "illuminance" // lx
+	MetricColorTemp   = "color_temp"  // K
 )
 
 // MetricsBySensorType lists the metrics a threshold rule may watch for each device type.
@@ -28,7 +30,8 @@ var MetricsBySensorType = map[string][]string{
 	SensorTypeTempHumid: {MetricTemperature, MetricHumidity},
 	SensorTypeMulti: {
 		MetricPower, MetricCurrent, MetricVoltage, MetricCO2, MetricTemperature, MetricHumidity,
-		MetricPressure, MetricGas, MetricDcVoltage, MetricDcCurrent, MetricDcPower,
+		MetricPressure, MetricGasRatio, MetricDcVoltage, MetricDcCurrent, MetricDcPower,
+		MetricIlluminance, MetricColorTemp,
 	},
 }
 

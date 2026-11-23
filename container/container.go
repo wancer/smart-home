@@ -84,7 +84,7 @@ func Build(cfg *config.Config) (*Container, error) {
 	dailyCtl := web.NewSensorsDailyController(db, states)
 	configurableCtl := web.NewSensorsConfigurableController(db, states, storage)
 	devicesCtl := web.NewDevicesController(states, db, storage, consumer, publisher, notifier)
-	deviceControlCtl := web.NewDeviceControlController(publisher, states, config.GetNewTimezones(), firmwareChecker)
+	deviceControlCtl := web.NewDeviceControlController(publisher, states, config.GetNewTimezones(), firmwareChecker, profiles)
 	deviceTimersCtl := web.NewDeviceTimersController(publisher, states)
 	deviceRulesCtl := web.NewDeviceRulesController(publisher, states)
 	irCtl := web.NewIrController(db, states, publisher)

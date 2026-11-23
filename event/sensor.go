@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"maps"
 	"slices"
-	"strings"
+	"strconv"
 	"time"
 )
 
@@ -64,11 +64,31 @@ type DcMonitor struct {
 	Power   float32 `json:"Power"`   // W
 }
 
-// GasSensor is an MQ-xxx gas sensor on the ADC (MQ-2, MQ-135, ...), reported in the ANALOG
-// object as "MQ135_1": ppm (as calibrated in Tasmota).
-type GasSensor struct {
-	Name string  // e.g. MQ135_1
-	Ppm  float32 // ppm
+// MqReading is an MQ-xxx gas sensor reading, computed by the backend from the raw analog value
+// (internal.DeviceState.ComputeMq) for devices with the sensor set up; nil otherwise. The sensor
+// reacts to many gases (NH3, NOx, benzene, alcohol, smoke, ...) and can't tell them apart, so
+// only Ratio is a metric, never a CO2 value.
+type MqReading struct {
+	Raw   float32  // ADC value
+	Volts float32  // module output, V
+	Vcc   float32  // module supply, V
+	VccDc bool     // Vcc measured by the DC monitor (INA219), not the configured supply
+	Rs    float32  // sensor resistance, Ω (not temperature/humidity corrected)
+	RsAvg float32  // corrected and averaged over the last minute, Ω
+	Ratio *float32 // R0 / RsAvg: 1.0 = the calibration air, higher = more gas; nil = not calibrated
+}
+
+// LightMeter is an ambient light sensor (BH1750, TSL2561, VEML7700, ...).
+type LightMeter struct {
+	Illuminance float32 `json:"Illuminance"` // lx
+}
+
+// ColorSensor is an RGB colour sensor (TCS34725, ...). Illuminance and ColorTemperature are nil
+// when it doesn't report them.
+type ColorSensor struct {
+	Red, Green, Blue, Clear float32
+	Illuminance             *float32 // lx
+	ColorTemperature        *float32 // K
 }
 
 // Chip is the ESP32 internal temperature sensor, reported with SetOption146 1.
@@ -80,7 +100,8 @@ type Chip struct {
 // fields, not their names: the first one with CarbonDioxide is Co2 (SCD40, MHZ19B, ...), the
 // first other one with Temperature and Humidity is TempHum (SHT4X, SHT3X, AM2301, BME280, ...),
 // the first one with Pressure is Baro (BME280, BMP280, ...) and the first one with Voltage and
-// Current is Dc (INA219, ...). The first MQ-xxx value in ANALOG is Gas.
+// Current is Dc (INA219, ...), the first one with Red, Green and Blue is Color (TCS34725, ...)
+// and the first other one with Illuminance is Light (BH1750, ...). ANALOG values are kept raw in Analog.
 type SensorEvent struct {
 	Time    TasmotaTime
 	Energy  *Energy
@@ -88,10 +109,18 @@ type SensorEvent struct {
 	TempHum *TempHumidity
 	Baro    *Barometer
 	Dc      *DcMonitor
-	Gas     *GasSensor
+	Light   *LightMeter
+	Color   *ColorSensor
 	Chip    *Chip
 
+	Analog map[string]float32 // raw ANALOG values (A1, ...)
+	Mq     *MqReading         // set by the backend from Analog, see MqReading
+
 	Sensors []string // names of all sensor objects, sorted (ENERGY, SCD40, ESP32, ...)
+
+	// Raw is every numeric field of every sensor object as reported (sensor -> field -> value),
+	// including the ones no metric uses (TCS34725 Red/Green/Blue/Clear, ...). Live only, never stored.
+	Raw map[string]map[string]float64
 }
 
 func (e *SensorEvent) UnmarshalJSON(in []byte) error {
@@ -113,6 +142,12 @@ func (e *SensorEvent) UnmarshalJSON(in []byte) error {
 			continue
 		}
 		e.Sensors = append(e.Sensors, name)
+		if fields := parseRaw(value); len(fields) > 0 {
+			if e.Raw == nil {
+				e.Raw = map[string]map[string]float64{}
+			}
+			e.Raw[name] = fields
+		}
 
 		switch name {
 		case "ENERGY":
@@ -126,7 +161,7 @@ func (e *SensorEvent) UnmarshalJSON(in []byte) error {
 			}
 			continue
 		case "ANALOG":
-			e.Gas = parseGas(value)
+			e.Analog = parseAnalog(value)
 			continue
 		}
 
@@ -139,6 +174,12 @@ func (e *SensorEvent) UnmarshalJSON(in []byte) error {
 			Voltage       *float32
 			Current       *float32
 			Power         *float32
+			Illuminance   *float32
+			Red           *float32
+			Green         *float32
+			Blue          *float32
+			Clear         *float32
+			CCT           *float32 `json:"ColorTemperature"`
 		}
 		if err := json.Unmarshal(value, &probe); err != nil {
 			continue // not a sensor we know
@@ -156,28 +197,56 @@ func (e *SensorEvent) UnmarshalJSON(in []byte) error {
 		if probe.Voltage != nil && probe.Current != nil && e.Dc == nil {
 			e.Dc = &DcMonitor{Voltage: *probe.Voltage, Current: *probe.Current, Power: deref(probe.Power)}
 		}
+		isColor := probe.Red != nil && probe.Green != nil && probe.Blue != nil
+		switch {
+		case isColor && e.Color == nil:
+			e.Color = &ColorSensor{
+				Red: *probe.Red, Green: *probe.Green, Blue: *probe.Blue, Clear: deref(probe.Clear),
+				Illuminance: probe.Illuminance, ColorTemperature: probe.CCT,
+			}
+		case !isColor && probe.Illuminance != nil && e.Light == nil:
+			e.Light = &LightMeter{Illuminance: *probe.Illuminance}
+		}
 	}
 	return nil
 }
 
-// parseGas returns the first MQ-xxx value (by name) of an ANALOG object, nil if there is none
-// (ANALOG also carries raw A1, Temperature1, Range1, ...).
-func parseGas(value json.RawMessage) *GasSensor {
-	var analog map[string]json.RawMessage
-	if err := json.Unmarshal(value, &analog); err != nil {
+// parseAnalog returns the numeric values of the ANALOG object (A1, Temperature1, Range1, ...).
+func parseAnalog(value json.RawMessage) map[string]float32 {
+	var raw map[string]any
+	if err := json.Unmarshal(value, &raw); err != nil {
 		return nil
 	}
-	for _, name := range slices.Sorted(maps.Keys(analog)) {
-		if !strings.HasPrefix(name, "MQ") {
-			continue
+	values := map[string]float32{}
+	for k, v := range raw {
+		if f, ok := v.(float64); ok {
+			values[k] = float32(f)
 		}
-		var ppm float32
-		if err := json.Unmarshal(analog[name], &ppm); err != nil {
-			continue
-		}
-		return &GasSensor{Name: name, Ppm: ppm}
 	}
-	return nil
+	return values
+}
+
+// parseRaw returns the numeric fields of a sensor object. Arrays of numbers (multi-phase
+// ENERGY, ...) become Field1, Field2, ...; strings and nested objects are skipped.
+func parseRaw(value json.RawMessage) map[string]float64 {
+	var raw map[string]any
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return nil
+	}
+	fields := map[string]float64{}
+	for k, v := range raw {
+		switch v := v.(type) {
+		case float64:
+			fields[k] = v
+		case []any:
+			for i, item := range v {
+				if f, ok := item.(float64); ok {
+					fields[k+strconv.Itoa(i+1)] = f
+				}
+			}
+		}
+	}
+	return fields
 }
 
 func deref(v *float32) float32 {
@@ -206,7 +275,10 @@ type Readings struct {
 	Humidity    *float32
 	DewPoint    *float32
 	Pressure    *float32 // hPa
-	Gas         *float32 // ppm, MQ-xxx gas sensor
+	GasRatio    *float32 // MQ-xxx gas level vs. calibration air (1.0 = baseline)
+	GasRs       *float32 // MQ-xxx sensor resistance, Ω, uncorrected; only stored (to recompute history)
+	Illuminance *float32 // lx: the light meter (BH1750), else the colour sensor (TCS34725)
+	ColorTemp   *float32 // K, colour sensor
 
 	// DC power monitor
 	DcVoltage *float32
@@ -228,14 +300,27 @@ func (e *SensorEvent) Readings() Readings {
 	if b := e.Baro; b != nil {
 		r.Pressure = new(b.Pressure)
 	}
-	if g := e.Gas; g != nil {
-		r.Gas = new(g.Ppm)
+	if m := e.Mq; m != nil {
+		r.GasRs = new(m.Rs)
+		if m.Ratio != nil {
+			r.GasRatio = new(*m.Ratio)
+		}
 	}
 	if i := e.Dc; i != nil {
 		r.DcVoltage, r.DcCurrent, r.DcPower = new(i.Voltage), new(i.Current), new(i.Power)
 	}
 	if c := e.Co2; c != nil {
 		r.CO2 = new(c.CO2)
+	}
+	// a dedicated light meter measures lux better than a colour sensor
+	switch {
+	case e.Light != nil:
+		r.Illuminance = new(e.Light.Illuminance)
+	case e.Color != nil && e.Color.Illuminance != nil:
+		r.Illuminance = new(*e.Color.Illuminance)
+	}
+	if e.Color != nil && e.Color.ColorTemperature != nil {
+		r.ColorTemp = new(*e.Color.ColorTemperature)
 	}
 
 	// climate, in order of precedence

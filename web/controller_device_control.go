@@ -19,6 +19,7 @@ type DeviceControlController struct {
 	states    *internal.DeviceStateManager
 	timezones *config.TimezonesConfig
 	firmware  *internal.FirmwareChecker
+	profiles  *internal.DeviceProfiles
 }
 
 func NewDeviceControlController(
@@ -26,12 +27,14 @@ func NewDeviceControlController(
 	states *internal.DeviceStateManager,
 	timezones *config.TimezonesConfig,
 	firmware *internal.FirmwareChecker,
+	profiles *internal.DeviceProfiles,
 ) *DeviceControlController {
 	return &DeviceControlController{
 		pub:       pub,
 		states:    states,
 		timezones: timezones,
 		firmware:  firmware,
+		profiles:  profiles,
 	}
 }
 

@@ -38,9 +38,14 @@ type SensorAggregate struct {
 	PressureAvg    *float32 // hPa
 	PressureMin    *float32
 	PressureMax    *float32
-	GasAvg         *float32 // ppm, MQ-xxx gas sensor
-	GasMin         *float32
-	GasMax         *float32
+	GasRatioAvg    *float32 // MQ-xxx gas level, 1.0 = calibration air
+	GasRatioMin    *float32
+	GasRatioMax    *float32
+	// MQ-xxx sensor resistance (Ω, not temperature corrected), not in the API: kept so the
+	// ratio can be recomputed (other calibration, better correction) later.
+	GasRsAvg *float32
+	GasRsMin *float32
+	GasRsMax *float32
 
 	// DC power monitor (INA219)
 	DcVoltageAvg *float32
@@ -52,6 +57,14 @@ type SensorAggregate struct {
 	DcPowerAvg   *float32
 	DcPowerMin   *float32
 	DcPowerMax   *float32
+
+	// light / colour sensor (BH1750, TCS34725)
+	IlluminanceAvg *float32 // lx
+	IlluminanceMin *float32
+	IlluminanceMax *float32
+	ColorTempAvg   *float32 // K
+	ColorTempMin   *float32
+	ColorTempMax   *float32
 
 	// ESP32 chip temperature, for every device reporting it; pruned after ChipTemperatureRetention.
 	ChipTemperatureAvg *float32

@@ -55,8 +55,17 @@ func readingAggregate(r *model.SensorEvent) *model.SensorAggregate {
 	if r.Pressure != nil {
 		agg.PressureAvg, agg.PressureMin, agg.PressureMax = triple(*r.Pressure)
 	}
-	if r.Gas != nil {
-		agg.GasAvg, agg.GasMin, agg.GasMax = triple(*r.Gas)
+	if r.GasRatio != nil {
+		agg.GasRatioAvg, agg.GasRatioMin, agg.GasRatioMax = triple(*r.GasRatio)
+	}
+	if r.Illuminance != nil {
+		agg.IlluminanceAvg, agg.IlluminanceMin, agg.IlluminanceMax = triple(*r.Illuminance)
+	}
+	if r.ColorTemp != nil {
+		agg.ColorTempAvg, agg.ColorTempMin, agg.ColorTempMax = triple(*r.ColorTemp)
+	}
+	if r.GasRs != nil {
+		agg.GasRsAvg, agg.GasRsMin, agg.GasRsMax = triple(*r.GasRs)
 	}
 	if r.DcVoltage != nil {
 		agg.DcVoltageAvg, agg.DcVoltageMin, agg.DcVoltageMax = triple(*r.DcVoltage)
@@ -128,9 +137,18 @@ func MergeInto(dst, src *model.SensorAggregate) {
 	dst.PressureAvg = mergeAvg(dst.PressureAvg, n1, src.PressureAvg, n2)
 	dst.PressureMin = mergeMin(dst.PressureMin, src.PressureMin)
 	dst.PressureMax = mergeMax(dst.PressureMax, src.PressureMax)
-	dst.GasAvg = mergeAvg(dst.GasAvg, n1, src.GasAvg, n2)
-	dst.GasMin = mergeMin(dst.GasMin, src.GasMin)
-	dst.GasMax = mergeMax(dst.GasMax, src.GasMax)
+	dst.GasRatioAvg = mergeAvg(dst.GasRatioAvg, n1, src.GasRatioAvg, n2)
+	dst.GasRatioMin = mergeMin(dst.GasRatioMin, src.GasRatioMin)
+	dst.GasRatioMax = mergeMax(dst.GasRatioMax, src.GasRatioMax)
+	dst.IlluminanceAvg = mergeAvg(dst.IlluminanceAvg, n1, src.IlluminanceAvg, n2)
+	dst.IlluminanceMin = mergeMin(dst.IlluminanceMin, src.IlluminanceMin)
+	dst.IlluminanceMax = mergeMax(dst.IlluminanceMax, src.IlluminanceMax)
+	dst.ColorTempAvg = mergeAvg(dst.ColorTempAvg, n1, src.ColorTempAvg, n2)
+	dst.ColorTempMin = mergeMin(dst.ColorTempMin, src.ColorTempMin)
+	dst.ColorTempMax = mergeMax(dst.ColorTempMax, src.ColorTempMax)
+	dst.GasRsAvg = mergeAvg(dst.GasRsAvg, n1, src.GasRsAvg, n2)
+	dst.GasRsMin = mergeMin(dst.GasRsMin, src.GasRsMin)
+	dst.GasRsMax = mergeMax(dst.GasRsMax, src.GasRsMax)
 
 	dst.DcVoltageAvg = mergeAvg(dst.DcVoltageAvg, n1, src.DcVoltageAvg, n2)
 	dst.DcVoltageMin = mergeMin(dst.DcVoltageMin, src.DcVoltageMin)

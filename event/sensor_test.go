@@ -60,25 +60,77 @@ func TestReadingsNil(t *testing.T) {
 	}
 }
 
-func TestReadingsMQ135(t *testing.T) {
-	payload := `{"Time":"2026-11-22T12:00:00","ANALOG":{"A1":12,"MQ135_1":0.02},"ESP32":{"Temperature":40.0},"TempUnit":"C"}`
+func TestAnalogIsKeptRaw(t *testing.T) {
+	payload := `{"Time":"2026-11-22T22:08:58","ANALOG":{"A1":203,"Range1":"x"},
+		"BME280":{"Temperature":4.7,"Humidity":74.3,"DewPoint":0.5,"Pressure":976.3}}`
 
 	var e SensorEvent
 	if err := json.Unmarshal([]byte(payload), &e); err != nil {
 		t.Fatal(err)
 	}
-	if e.Gas == nil || e.Gas.Name != "MQ135_1" {
-		t.Fatalf("gas sensor not found: %+v", e.Gas)
+	if e.Analog["A1"] != 203 || len(e.Analog) != 1 {
+		t.Errorf("Analog = %v, want only A1 = 203", e.Analog)
 	}
-	if r := e.Readings(); r.Gas == nil || *r.Gas != 0.02 {
-		t.Errorf("Gas = %v, want 0.02", r.Gas)
+	if e.Mq != nil || e.Readings().GasRatio != nil {
+		t.Error("an MQ reading is only computed by the backend")
 	}
-	if e.TempHum != nil || e.Co2 != nil {
-		t.Errorf("unexpected climate sensor: %+v", e)
+	if e.TempHum == nil || e.TempHum.Temperature != 4.7 {
+		t.Errorf("BME280 lost: %+v", e.TempHum)
+	}
+}
+
+func TestReadingsBH1750AndTCS34725(t *testing.T) {
+	payload := `{"Time":"2026-11-23T17:28:42","ts":1795447722,"ESP32":{"Temperature":18.33333},
+		"BH1750":{"Illuminance":223.5482},
+		"TCS34725":{"Red":41.78241,"Green":34.01711,"Blue":22.79176,"Clear":30.87053,"Illuminance":188.7146,"ColorTemperature":3469.305}}`
+
+	var e SensorEvent
+	if err := json.Unmarshal([]byte(payload), &e); err != nil {
+		t.Fatal(err)
+	}
+	if e.Light == nil || e.Color == nil {
+		t.Fatalf("light / colour sensor not recognised: %+v", e)
+	}
+	if e.Color.Red != 41.78241 || e.Color.Clear != 30.87053 {
+		t.Errorf("colour = %+v", e.Color)
+	}
+	r := e.Readings()
+	if r.Illuminance == nil || *r.Illuminance != 223.5482 {
+		t.Errorf("Illuminance = %v, want the BH1750 value", r.Illuminance)
+	}
+	if r.ColorTemp == nil || *r.ColorTemp != 3469.305 {
+		t.Errorf("ColorTemp = %v", r.ColorTemp)
+	}
+	if r.Temperature != nil || r.Power != nil {
+		t.Errorf("unexpected readings: %+v", r)
 	}
 
-	var plain SensorEvent
-	if err := json.Unmarshal([]byte(`{"ANALOG":{"A1":512}}`), &plain); err != nil || plain.Gas != nil {
-		t.Errorf("raw ANALOG must not be a gas sensor: %+v %v", plain.Gas, err)
+	// the colour sensor alone also gives the illuminance
+	var c SensorEvent
+	if err := json.Unmarshal([]byte(`{"TCS34725":{"Red":1,"Green":2,"Blue":3,"Clear":4,"Illuminance":188.5,"ColorTemperature":3000}}`), &c); err != nil {
+		t.Fatal(err)
+	}
+	if r := c.Readings(); r.Illuminance == nil || *r.Illuminance != 188.5 {
+		t.Errorf("Illuminance = %v, want the TCS34725 value", r.Illuminance)
+	}
+}
+
+func TestRawValues(t *testing.T) {
+	payload := `{"Time":"2026-11-23T17:28:42","TempUnit":"C",
+		"TCS34725":{"Red":41.78,"Green":34.01,"Blue":22.79,"Clear":30.87,"Illuminance":188.71,"ColorTemperature":3469.3},
+		"PZEM":{"Name":"phase","Voltage":[230,231],"Power":12}}`
+
+	var e SensorEvent
+	if err := json.Unmarshal([]byte(payload), &e); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.Raw["TCS34725"]["Clear"]; got != 30.87 {
+		t.Errorf("TCS34725.Clear = %v", got)
+	}
+	if e.Raw["PZEM"]["Voltage1"] != 230 || e.Raw["PZEM"]["Voltage2"] != 231 || e.Raw["PZEM"]["Power"] != 12 {
+		t.Errorf("PZEM = %v", e.Raw["PZEM"])
+	}
+	if _, ok := e.Raw["PZEM"]["Name"]; ok {
+		t.Error("strings must be skipped")
 	}
 }

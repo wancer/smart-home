@@ -48,6 +48,9 @@ type Device struct {
 	FirmwareSdk     string   // STATUS2 SDK, e.g. "5.5.4.260407" (ESP-IDF / NONOS SDK)
 	Sensors         []string `gorm:"type:text;serializer:json"` // sensor names in telemetry, e.g. ENERGY, SCD40, ESP32
 	ProfiledAt      *time.Time
+
+	// Mq configures an MQ-xxx gas sensor on an analog input; nil = never set up.
+	Mq *MqConfig `gorm:"type:text;serializer:json"`
 }
 
 // Tiers returns the device's storage tiers, or the default ones.

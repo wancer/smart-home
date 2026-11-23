@@ -27,8 +27,6 @@ type Storage struct {
 	lastHistory       map[uint]string
 	bufferFlushStream chan struct{}
 	deviceMap         *DeviceStateManager
-	archivedLock      sync.Mutex
-	archivedRows      map[uint]int64
 	lastReading       map[uint]time.Time // last power reading per device, for its energy
 }
 
@@ -36,7 +34,6 @@ type Storage struct {
 type SensorHistorySize struct {
 	Aggregates int64  // sensor_aggregate rows, any bucket size
 	Daily      int64  // sensor_history, one row per day
-	Archived   int64  // sensor_event, legacy raw readings
 	Oldest     *int64 // unix time of the oldest aggregate bucket, nil if there are none
 }
 
@@ -122,7 +119,8 @@ func (s *Storage) PruneChipTemperature() {
 		Where("datetime(bucket_time) < datetime(?)", cutoff).
 		Where("chip_temperature_avg IS NULL AND power_consumed IS NULL AND power_avg IS NULL AND current_avg IS NULL AND voltage_avg IS NULL").
 		Where("co2_avg IS NULL AND temperature_avg IS NULL AND humidity_avg IS NULL AND dew_point_avg IS NULL").
-		Where("pressure_avg IS NULL AND dc_voltage_avg IS NULL AND dc_current_avg IS NULL AND dc_power_avg IS NULL AND gas_avg IS NULL").
+		Where("pressure_avg IS NULL AND dc_voltage_avg IS NULL AND dc_current_avg IS NULL AND dc_power_avg IS NULL AND gas_ratio_avg IS NULL AND gas_rs_avg IS NULL").
+		Where("illuminance_avg IS NULL AND color_temp_avg IS NULL").
 		Delete(&model.SensorAggregate{})
 	if res.Error != nil {
 		slog.Error("prune empty aggregates", "err", res.Error)
@@ -265,11 +263,6 @@ func (s *Storage) GetHistorySizes(ctx context.Context) (map[uint]SensorHistorySi
 		return nil, err
 	}
 
-	archived, err := s.archivedCounts(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	sizes := map[uint]SensorHistorySize{}
 	for _, a := range aggregates {
 		sizes[a.DeviceId] = SensorHistorySize{Aggregates: a.Total, Oldest: a.Oldest}
@@ -279,31 +272,7 @@ func (s *Storage) GetHistorySizes(ctx context.Context) (map[uint]SensorHistorySi
 		size.Daily = total
 		sizes[deviceId] = size
 	}
-	for deviceId, total := range archived {
-		size := sizes[deviceId]
-		size.Archived = total
-		sizes[deviceId] = size
-	}
 	return sizes, nil
-}
-
-// archivedCounts counts sensor_event rows once and caches the result: the table
-// is no longer written to, and its index doesn't lead with device_id, so counting
-// has to scan every row. Anything that deletes from it must reset archivedRows.
-func (s *Storage) archivedCounts(ctx context.Context) (map[uint]int64, error) {
-	s.archivedLock.Lock()
-	defer s.archivedLock.Unlock()
-
-	if s.archivedRows != nil {
-		return s.archivedRows, nil
-	}
-
-	counts, err := countByDevice(s.db.WithContext(ctx).Model(&model.SensorEvent{}))
-	if err != nil {
-		return nil, err
-	}
-	s.archivedRows = counts
-	return counts, nil
 }
 
 func countByDevice(query *gorm.DB) (map[uint]int64, error) {

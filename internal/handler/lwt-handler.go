@@ -32,6 +32,7 @@ func (h *EventHandler) HandleLwt(state *internal.DeviceState, e *event.Lwt) {
 	if !state.Online {
 		state.LastTelemetry = nil
 		state.ChipTemperature = nil
+		state.Raw = nil
 		state.Uptime = nil
 		state.LoadAvg = nil
 		state.RestartReason = nil

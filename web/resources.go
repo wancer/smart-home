@@ -1,6 +1,7 @@
 package web
 
 import (
+	"slices"
 	"smart-home/event"
 	"smart-home/internal"
 	"smart-home/model"
@@ -20,14 +21,19 @@ type SensorEvent struct {
 	CO2Dioxide  *uint    `json:"co2"`
 	Temperature *float32 `json:"temperature"`
 	Humidity    *float32 `json:"humidity"`
-	Pressure    *float32 `json:"pressure"` // hPa
-	Gas         *float32 `json:"gas"`      // ppm, MQ-xxx
+	Pressure    *float32 `json:"pressure"`    // hPa
+	GasRatio    *float32 `json:"gasRatio"`    // MQ-xxx, 1.0 = calibration air
+	Illuminance *float32 `json:"illuminance"` // lx
+	ColorTemp   *float32 `json:"colorTemp"`   // K
 
 	DcVoltage *float32 `json:"dcVoltage"`
 	DcCurrent *float32 `json:"dcCurrent"`
 	DcPower   *float32 `json:"dcPower"`
 
 	ChipTemperature *float32 `json:"chipTemperature"`
+
+	// Raw is every numeric sensor field as reported (sensor -> field -> value); live events only.
+	Raw map[string]map[string]float64 `json:"raw,omitempty"`
 }
 
 func NewSensorFromEvent(e *event.SensorEvent, d *model.Device) *SensorEvent {
@@ -45,13 +51,16 @@ func NewSensorFromEvent(e *event.SensorEvent, d *model.Device) *SensorEvent {
 		Temperature: r.Temperature,
 		Humidity:    r.Humidity,
 		Pressure:    r.Pressure,
-		Gas:         r.Gas,
+		GasRatio:    r.GasRatio,
+		Illuminance: r.Illuminance,
+		ColorTemp:   r.ColorTemp,
 
 		DcVoltage: r.DcVoltage,
 		DcCurrent: r.DcCurrent,
 		DcPower:   r.DcPower,
 
 		ChipTemperature: e.ChipTemperature(),
+		Raw:             e.Raw,
 	}
 }
 
@@ -68,7 +77,9 @@ func NewSensorEvent(dbRecord *model.SensorEvent) *SensorEvent {
 		Temperature: dbRecord.Temperature,
 		Humidity:    dbRecord.Humidity,
 		Pressure:    dbRecord.Pressure,
-		Gas:         dbRecord.Gas,
+		GasRatio:    dbRecord.GasRatio,
+		Illuminance: dbRecord.Illuminance,
+		ColorTemp:   dbRecord.ColorTemp,
 
 		DcVoltage: dbRecord.DcVoltage,
 		DcCurrent: dbRecord.DcCurrent,
@@ -91,7 +102,9 @@ func NewSensorEventFromAggregate(agg *model.SensorAggregate) *SensorEvent {
 		Temperature: agg.TemperatureAvg,
 		Humidity:    agg.HumidityAvg,
 		Pressure:    agg.PressureAvg,
-		Gas:         agg.GasAvg,
+		GasRatio:    agg.GasRatioAvg,
+		Illuminance: agg.IlluminanceAvg,
+		ColorTemp:   agg.ColorTempAvg,
 
 		DcVoltage: agg.DcVoltageAvg,
 		DcCurrent: agg.DcCurrentAvg,
@@ -131,13 +144,16 @@ func NewDeviceResponse(state *internal.DeviceState) *DeviceResponse {
 			Temperature: state.Temperature,
 			Humidity:    state.Humidity,
 			Pressure:    state.Pressure,
-			Gas:         state.Gas,
+			GasRatio:    state.GasRatio,
+			Illuminance: state.Illuminance,
+			ColorTemp:   state.ColorTemp,
 
 			DcVoltage: state.DcVoltage,
 			DcCurrent: state.DcCurrent,
 			DcPower:   state.DcPower,
 
 			ChipTemperature: state.ChipTemperature,
+			Raw:             state.Raw,
 		},
 	}
 }
@@ -154,29 +170,34 @@ type DeviceState struct {
 	Temperature *float32 `json:"temperature"`
 	Humidity    *float32 `json:"humidity"`
 	Pressure    *float32 `json:"pressure"`
-	Gas         *float32 `json:"gas"`
+	GasRatio    *float32 `json:"gasRatio"`
+	Illuminance *float32 `json:"illuminance"`
+	ColorTemp   *float32 `json:"colorTemp"`
 
 	DcVoltage *float32 `json:"dcVoltage"`
 	DcCurrent *float32 `json:"dcCurrent"`
 	DcPower   *float32 `json:"dcPower"`
 
 	ChipTemperature *float32 `json:"chipTemperature"`
+
+	// Raw is every numeric sensor field of the last telemetry (sensor -> field -> value); null while offline.
+	Raw map[string]map[string]float64 `json:"raw"`
 }
 
 type DeviceResponse struct {
-	ID             uint         `json:"id"`
-	Name           string       `json:"name"`
-	Topic          string       `json:"topic"`
-	Enabled        bool         `json:"enabled"`
+	ID             uint           `json:"id"`
+	Name           string         `json:"name"`
+	Topic          string         `json:"topic"`
+	Enabled        bool           `json:"enabled"`
 	SensorType     string         `json:"sensorType"`     // detected: energy, co2, t-h, multi, ir, other
 	SupportsToggle bool           `json:"supportsToggle"` // has a relay (template), not IR
 	Profile        *DeviceProfile `json:"profile"`
-	OfflineTimeout uint         `json:"offlineTimeout"` // seconds, 0 = auto
+	OfflineTimeout uint           `json:"offlineTimeout"` // seconds, 0 = auto
 	// StorageTiers is the effective sensor data retention (the default when not set).
 	StorageTiers []model.StorageTier `json:"storageTiers"`
 	// Dashboard is what the dashboard shows (chart "" and values null = auto).
-	Dashboard    model.DashboardView `json:"dashboard"`
-	State        *DeviceState        `json:"state"`
+	Dashboard model.DashboardView `json:"dashboard"`
+	State     *DeviceState        `json:"state"`
 
 	// SensorHistory is only filled in the device list.
 	SensorHistory *SensorHistorySize `json:"sensorHistory,omitempty"`
@@ -185,7 +206,6 @@ type DeviceResponse struct {
 type SensorHistorySize struct {
 	Aggregates int64  `json:"aggregates"`
 	Daily      int64  `json:"daily"`
-	Archived   int64  `json:"archived"`
 	Oldest     *int64 `json:"oldest"`
 }
 
@@ -222,9 +242,15 @@ type DeviceSensorEvent struct {
 	PressureAvg    *float32 `json:"pressureAvg"`
 	PressureMin    *float32 `json:"pressureMin"`
 	PressureMax    *float32 `json:"pressureMax"`
-	GasAvg         *float32 `json:"gasAvg"`
-	GasMin         *float32 `json:"gasMin"`
-	GasMax         *float32 `json:"gasMax"`
+	GasRatioAvg    *float32 `json:"gasRatioAvg"`
+	GasRatioMin    *float32 `json:"gasRatioMin"`
+	GasRatioMax    *float32 `json:"gasRatioMax"`
+	IlluminanceAvg *float32 `json:"illuminanceAvg"`
+	IlluminanceMin *float32 `json:"illuminanceMin"`
+	IlluminanceMax *float32 `json:"illuminanceMax"`
+	ColorTempAvg   *float32 `json:"colorTempAvg"`
+	ColorTempMin   *float32 `json:"colorTempMin"`
+	ColorTempMax   *float32 `json:"colorTempMax"`
 
 	DcVoltageAvg *float32 `json:"dcVoltageAvg"`
 	DcVoltageMin *float32 `json:"dcVoltageMin"`
@@ -264,6 +290,8 @@ type DeviceFeatures struct {
 	Light     *string `json:"light"` // "rgb", "dimmer" or null
 	Ir        bool    `json:"ir"`
 	Energy    bool    `json:"energy"`   // energy meter: calibration
+	Mq        bool    `json:"mq"`       // MQ-xxx gas sensor enabled on an analog input: calibration
+	Analog    bool    `json:"analog"`   // reports ANALOG values: an MQ sensor can be set up
 	ChipTemp  bool    `json:"chipTemp"` // reports the ESP32 internal temperature (stored for 24 h)
 }
 
@@ -276,6 +304,8 @@ func newDeviceProfile(state *internal.DeviceState) *DeviceProfile {
 			Ir:       d.SensorType == model.SensorTypeIR,
 			Energy:   state.HasEnergyMeter(),
 			ChipTemp: state.HasChipTemperature(),
+			Mq:       state.HasMq(),
+			Analog:   slices.Contains(d.Sensors, "ANALOG"),
 		},
 	}
 	if p.Sensors == nil {
@@ -345,8 +375,8 @@ type LedConfig struct {
 	LedPwmOff  *uint `json:"ledPwmOff"`
 	LedPwmOn   *uint `json:"ledPwmOn"`
 
-	StatusLed  bool    `json:"statusLed"`  // has a status LED (Led/LedLink GPIO), or the template is unknown
-	Light      *string `json:"light"`      // "rgb" (WS2812 / 3+ PWM), "dimmer" (1-2 PWM) or null
+	StatusLed  bool    `json:"statusLed"` // has a status LED (Led/LedLink GPIO), or the template is unknown
+	Light      *string `json:"light"`     // "rgb" (WS2812 / 3+ PWM), "dimmer" (1-2 PWM) or null
 	LightPower *bool   `json:"lightPower"`
 	Dimmer     *uint   `json:"dimmer"` // 0..100
 	Color      *string `json:"color"`  // "#rrggbb" at full brightness

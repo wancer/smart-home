@@ -76,11 +76,23 @@ type DeviceState struct {
 	Humidity    *float32
 	DewPoint    *float32
 	Pressure    *float32 // hPa
-	Gas         *float32 // ppm, MQ-xxx
+	GasRatio    *float32 // MQ-xxx gas level vs. calibration air
+	Illuminance *float32 // lx
+	ColorTemp   *float32 // K
 
 	DcVoltage *float32
 	DcCurrent *float32
 	DcPower   *float32
+
+	// Mq is the last MQ-xxx gas sensor reading (see ComputeMq), MqAt when it came; nil while offline
+	Mq        *event.MqReading
+	MqAt      time.Time
+	mqSamples []mqSample // corrected Rs of the last minute
+	// Analog is the last raw ANALOG object (A1, ...), to offer the MQ sensor setup
+	Analog map[string]float32
+
+	// Raw is every numeric sensor field of the last telemetry (event.SensorEvent.Raw); nil while offline
+	Raw map[string]map[string]float64
 
 	ChipTemperature *float32   // ESP32 internal temperature (SetOption146 1)
 	LastTelemetry   *time.Time // last tele/SENSOR message; IR availability falls back to LWT while nil
@@ -96,12 +108,15 @@ func (s *DeviceState) SetReadings(r *event.Readings) {
 	s.Power, s.Current, s.Voltage, s.Today = r.Power, r.Current, r.Voltage, r.Today
 	s.CO2, s.Temperature, s.Humidity, s.DewPoint, s.Pressure = r.CO2, r.Temperature, r.Humidity, r.DewPoint, r.Pressure
 	s.DcVoltage, s.DcCurrent, s.DcPower = r.DcVoltage, r.DcCurrent, r.DcPower
-	s.Gas = r.Gas
+	s.GasRatio = r.GasRatio
+	s.Illuminance, s.ColorTemp = r.Illuminance, r.ColorTemp
 }
 
 // ClearReadings forgets the live sensor values, e.g. when the device goes offline.
 func (s *DeviceState) ClearReadings() {
 	s.SetReadings(&event.Readings{})
+	s.ClearMq()
+	s.Raw = nil
 }
 
 type DeviceUptime struct {

@@ -39,13 +39,15 @@ func DetectSensorType(gpio []int, sns *event.SensorEvent) string {
 	return model.SensorTypeOther
 }
 
-// isMultiSensor: a sensor only the multi type shows (pressure, DC monitor, MQ gas), or an energy
+// isMultiSensor: a sensor only the multi type shows (pressure, DC monitor, MQ gas sensor, light or
+// colour sensor), or an energy
 // meter together with a climate sensor.
 func isMultiSensor(sns *event.SensorEvent) bool {
 	if sns == nil {
 		return false
 	}
-	return sns.Baro != nil || sns.Dc != nil || sns.Gas != nil || (sns.Energy != nil && (sns.Co2 != nil || sns.TempHum != nil))
+	return sns.Baro != nil || sns.Dc != nil || sns.Mq != nil || sns.Light != nil || sns.Color != nil ||
+		(sns.Energy != nil && (sns.Co2 != nil || sns.TempHum != nil))
 }
 
 func hasIr(gpio []int) bool {
@@ -70,7 +72,8 @@ func HasSensorData(sensorType string, sns *event.SensorEvent) bool {
 	case model.SensorTypeTempHumid:
 		return sns.TempHum != nil
 	case model.SensorTypeMulti:
-		return sns.Energy != nil || sns.Co2 != nil || sns.TempHum != nil || sns.Baro != nil || sns.Dc != nil || sns.Gas != nil
+		return sns.Energy != nil || sns.Co2 != nil || sns.TempHum != nil || sns.Baro != nil || sns.Dc != nil || sns.Mq != nil ||
+			sns.Light != nil || sns.Color != nil
 	}
 	return false
 }
@@ -105,6 +108,15 @@ func (p *DeviceProfiles) Save(d *model.Device) {
 	if err != nil {
 		slog.Error("[device][profile] save error", "deviceId", d.ID, "err", err)
 	}
+}
+
+// SaveMq writes the MQ sensor column only (settings and calibration).
+func (p *DeviceProfiles) SaveMq(d *model.Device) error {
+	if err := p.db.Model(d).Select("Mq").Updates(d).Error; err != nil {
+		slog.Error("[device][mq] save error", "deviceId", d.ID, "err", err)
+		return err
+	}
+	return nil
 }
 
 // ApplyDetection updates the sensor type and sensor names from new evidence and reports

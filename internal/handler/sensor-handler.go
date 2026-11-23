@@ -12,6 +12,11 @@ import (
 func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.SensorEvent) {
 	now := time.Now()
 	state.ChipTemperature = e.ChipTemperature()
+	state.Raw = e.Raw
+	if e.Analog != nil {
+		state.Analog = e.Analog
+	}
+	state.ComputeMq(e, now) // before detection: an MQ reading makes the device multi
 
 	if state.ApplyDetection(e, false) {
 		h.profiles.Save(state.Device)
@@ -91,7 +96,8 @@ func toModel(e *event.SensorEvent, device *model.Device, now *time.Time) *model.
 	r.Voltage, r.Current = readings.Voltage, readings.Current
 	r.CO2, r.Temperature, r.Humidity, r.DewPoint, r.Pressure = readings.CO2, readings.Temperature, readings.Humidity, readings.DewPoint, readings.Pressure
 	r.DcVoltage, r.DcCurrent, r.DcPower = readings.DcVoltage, readings.DcCurrent, readings.DcPower
-	r.Gas = readings.Gas
+	r.GasRatio, r.GasRs = readings.GasRatio, readings.GasRs
+	r.Illuminance, r.ColorTemp = readings.Illuminance, readings.ColorTemp
 
 	return r
 }
