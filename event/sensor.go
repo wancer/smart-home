@@ -1,11 +1,15 @@
 package event
 
 import (
+	"cmp"
 	"encoding/json"
 	"maps"
+	"math"
 	"slices"
 	"strconv"
 	"time"
+
+	"smart-home/model"
 )
 
 type TasmotaTime time.Time
@@ -339,4 +343,53 @@ func (e *SensorEvent) ChipTemperature() *float32 {
 		return nil
 	}
 	return new(e.Chip.Temperature)
+}
+
+// Reading is one numeric value of a message: Source is the sensor object (ENERGY, BH1750, ESP32,
+// ANALOG, ...) or a computed source (MQ), Field its field (arrays as Field1, Field2, ...). One
+// series per device × Source × Field; its kind is model.SeriesKind(Source, Field).
+type Reading struct {
+	Source string
+	Field  string
+	Value  float64
+}
+
+// SeriesReadings returns every measurement of the message: one per Raw entry not skipped by
+// model.SkipSeriesField, the ANALOG values from Analog when Raw has none for ANALOG, and the
+// computed MQ Ratio (when calibrated) and Rs. NaN/Inf values are dropped. Sorted by Source, then
+// Field; nil for a nil event.
+func (e *SensorEvent) SeriesReadings() []Reading {
+	if e == nil {
+		return nil
+	}
+	var out []Reading
+	add := func(source, field string, value float64) {
+		if math.IsNaN(value) || math.IsInf(value, 0) || model.SkipSeriesField(source, field) {
+			return
+		}
+		out = append(out, Reading{Source: source, Field: field, Value: value})
+	}
+	for source, fields := range e.Raw {
+		for field, value := range fields {
+			add(source, field, value)
+		}
+	}
+	if _, ok := e.Raw["ANALOG"]; !ok {
+		for field, value := range e.Analog {
+			add("ANALOG", field, float64(value))
+		}
+	}
+	if m := e.Mq; m != nil {
+		add(model.SourceMq, "Rs", math.Round(float64(m.Rs)*10) / 10)
+		if m.Ratio != nil {
+			add(model.SourceMq, "Ratio", math.Round(float64(*m.Ratio)*100) / 100)
+		}
+	}
+	slices.SortFunc(out, func(a, b Reading) int {
+		if c := cmp.Compare(a.Source, b.Source); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Field, b.Field)
+	})
+	return out
 }

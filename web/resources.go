@@ -64,53 +64,37 @@ func NewSensorFromEvent(e *event.SensorEvent, d *model.Device) *SensorEvent {
 	}
 }
 
-func NewSensorEvent(dbRecord *model.SensorEvent) *SensorEvent {
-	return &SensorEvent{
-		DeviceId: dbRecord.DeviceId,
-		Time:     dbRecord.RealTime.Unix(),
-
-		Power:   dbRecord.Power,
-		Current: dbRecord.Current,
-		Voltage: dbRecord.Voltage,
-
-		CO2Dioxide:  dbRecord.CO2,
-		Temperature: dbRecord.Temperature,
-		Humidity:    dbRecord.Humidity,
-		Pressure:    dbRecord.Pressure,
-		GasRatio:    dbRecord.GasRatio,
-		Illuminance: dbRecord.Illuminance,
-		ColorTemp:   dbRecord.ColorTemp,
-
-		DcVoltage: dbRecord.DcVoltage,
-		DcCurrent: dbRecord.DcCurrent,
-		DcPower:   dbRecord.DcPower,
-
-		ChipTemperature: dbRecord.ChipTemperature,
+// newSensorEventFromValues builds a reading from series values at one time (stored buckets
+// or buffered readings): each fixed field takes the first preferred series of its kind
+// (internal.PreferredSeries) that has a value.
+func newSensorEventFromValues(deviceId uint, at time.Time, preferred map[string][]uint, values map[uint]*model.SensorValue) *SensorEvent {
+	avg := func(kind string) *float32 {
+		if v, ok := internal.PickValue(preferred, kind, values); ok {
+			return new(float32(v.Avg))
+		}
+		return nil
 	}
-}
-
-func NewSensorEventFromAggregate(agg *model.SensorAggregate) *SensorEvent {
 	return &SensorEvent{
-		DeviceId: agg.DeviceId,
-		Time:     agg.BucketTime.Unix(),
+		DeviceId: deviceId,
+		Time:     at.Unix(),
 
-		Power:   truncUint(agg.PowerAvg),
-		Current: agg.CurrentAvg,
-		Voltage: truncUint(agg.VoltageAvg),
+		Power:   truncUint(avg(model.KindPower)),
+		Current: avg(model.KindCurrent),
+		Voltage: truncUint(avg(model.KindVoltage)),
 
-		CO2Dioxide:  truncUint(agg.CO2Avg),
-		Temperature: agg.TemperatureAvg,
-		Humidity:    agg.HumidityAvg,
-		Pressure:    agg.PressureAvg,
-		GasRatio:    agg.GasRatioAvg,
-		Illuminance: agg.IlluminanceAvg,
-		ColorTemp:   agg.ColorTempAvg,
+		CO2Dioxide:  truncUint(avg(model.KindCo2)),
+		Temperature: avg(model.KindTemperature),
+		Humidity:    avg(model.KindHumidity),
+		Pressure:    avg(model.KindPressure),
+		GasRatio:    avg(model.KindGasRatio),
+		Illuminance: avg(model.KindIlluminance),
+		ColorTemp:   avg(model.KindColorTemp),
 
-		DcVoltage: agg.DcVoltageAvg,
-		DcCurrent: agg.DcCurrentAvg,
-		DcPower:   agg.DcPowerAvg,
+		DcVoltage: avg(model.KindDcVoltage),
+		DcCurrent: avg(model.KindDcCurrent),
+		DcPower:   avg(model.KindDcPower),
 
-		ChipTemperature: agg.ChipTemperatureAvg,
+		ChipTemperature: avg(model.KindChipTemperature),
 	}
 }
 
@@ -118,7 +102,7 @@ func truncUint(v *float32) *uint {
 	if v == nil {
 		return nil
 	}
-	return new(uint(*v))
+	return new(uint(max(0, *v)))
 }
 
 func NewDeviceResponse(state *internal.DeviceState) *DeviceResponse {

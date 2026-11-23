@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"smart-home/model"
 
@@ -9,11 +10,12 @@ import (
 )
 
 type DatabaseInitializer struct {
-	db *gorm.DB
+	db  *gorm.DB
+	dsn string // STORAGE_DSN, for the backup before the series migration
 }
 
-func NewDatabaseInitializer(db *gorm.DB) *DatabaseInitializer {
-	return &DatabaseInitializer{db: db}
+func NewDatabaseInitializer(db *gorm.DB, dsn string) *DatabaseInitializer {
+	return &DatabaseInitializer{db: db, dsn: dsn}
 }
 
 func (init *DatabaseInitializer) migrate() error {
@@ -23,7 +25,8 @@ func (init *DatabaseInitializer) migrate() error {
 	if err := init.db.AutoMigrate(&model.SensorHistory{}); err != nil {
 		return err
 	}
-	if err := init.db.AutoMigrate(&model.SensorAggregate{}); err != nil {
+	// sensor_aggregate is no longer auto-migrated: it is only read by migrateSeries, then dropped.
+	if err := init.db.AutoMigrate(&model.SensorSeries{}, &model.SensorValue{}); err != nil {
 		return err
 	}
 	if err := init.db.AutoMigrate(&model.IrSignal{}); err != nil {
@@ -35,16 +38,29 @@ func (init *DatabaseInitializer) migrate() error {
 	if err := init.db.AutoMigrate(&model.NotifyRule{}); err != nil {
 		return err
 	}
+	// before dropColumns, so the backup still has every legacy column
+	if err := init.backupForSeries(); err != nil {
+		return err
+	}
+	if err := init.addMissingLegacyColumns(); err != nil {
+		return err
+	}
 	if err := init.dropColumns(); err != nil {
 		return err
 	}
-	return init.dropTables()
+	if err := init.dropTables(); err != nil {
+		return err
+	}
+	return init.migrateSeries()
 }
 
 // dropTables removes tables that are no longer used. It is a no-op once they are gone.
 // Run VACUUM to shrink the file.
 //   - sensor_event: legacy raw readings, copied into sensor_aggregate on the first boot after
 //     the aggregates were introduced and never read since
+//
+// sensor_aggregate is not listed here: migrateSeries (series-migration.go) drops it only after
+// its data was copied into sensor_value, verified and backed up.
 func (init *DatabaseInitializer) dropTables() error {
 	for _, table := range []string{"sensor_event"} {
 		if !init.db.Migrator().HasTable(table) {
@@ -104,4 +120,27 @@ func (init *DatabaseInitializer) loadDevices() ([]*model.Device, error) {
 		devices[i] = &dbDevices[i]
 	}
 	return devices, nil
+}
+
+// addMissingLegacyColumns adds the model.SensorAggregate columns a very old sensor_aggregate
+// lacks (e.g. bucket_seconds, default 300), so the series migration can read them. Only
+// ALTER TABLE ADD COLUMN: unlike AutoMigrate, it never rebuilds the table or changes a column.
+func (init *DatabaseInitializer) addMissingLegacyColumns() error {
+	if !init.db.Migrator().HasTable(legacyTable) {
+		return nil
+	}
+	stmt := &gorm.Statement{DB: init.db}
+	if err := stmt.Parse(&model.SensorAggregate{}); err != nil {
+		return err
+	}
+	for _, field := range stmt.Schema.Fields {
+		if field.DBName == "" || init.db.Migrator().HasColumn(&model.SensorAggregate{}, field.DBName) {
+			continue
+		}
+		slog.Info("Adding missing legacy column for the series migration", "table", legacyTable, "column", field.DBName)
+		if err := init.db.Migrator().AddColumn(&model.SensorAggregate{}, field.Name); err != nil {
+			return fmt.Errorf("add column %s.%s: %w", legacyTable, field.DBName, err)
+		}
+	}
+	return nil
 }

@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"smart-home/event"
 	"smart-home/internal"
-	"smart-home/model"
 	"time"
 )
 
@@ -28,8 +27,7 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 		return
 	}
 
-	m := toModel(e, state.Device, &now)
-	h.storage.Store(m)
+	values := h.storage.Store(state.Device.ID, now, e.SeriesReadings())
 
 	state.LastUpdate = &now
 	state.LastTelemetry = &now
@@ -50,23 +48,17 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 	}
 	readings := e.Readings()
 	state.SetReadings(&readings)
+	state.SetValues(values)
 
 	h.dispatcher.Dispatch(&event.SensorsUpdated{DeviceId: state.Device.ID})
 }
 
 // handleBareTelemetry treats telemetry without the device's sensor data (IR remotes and
-// unrecognised devices: only the ESP32 chip temperature, SetOption146 1) as a sign of life,
-// on top of LWT. A sensor device that sent a message without its sensor only gets the
-// chip temperature.
+// unrecognised devices: e.g. only the ESP32 chip temperature, SetOption146 1) as a sign of
+// life, on top of LWT. Whatever the message reports is still stored as series, but the live
+// values are left as they are.
 func (h *EventHandler) handleBareTelemetry(state *internal.DeviceState, e *event.SensorEvent, now *time.Time) {
-	if state.ChipTemperature != nil {
-		h.storage.Store(&model.SensorEvent{
-			DeviceId:        state.Device.ID,
-			RealTime:        now.UTC(),
-			DeviceTime:      time.Time(e.Time),
-			ChipTemperature: state.ChipTemperature,
-		})
-	}
+	h.storage.Store(state.Device.ID, *now, e.SeriesReadings())
 	if !state.Device.AvailabilityFromLwt() {
 		return
 	}
@@ -82,22 +74,4 @@ func (h *EventHandler) handleBareTelemetry(state *internal.DeviceState, e *event
 		h.p.PublishStates(state.Device)
 		h.dispatcher.Dispatch(&event.DeviceAvailability{DeviceId: state.Device.ID, Online: true})
 	}
-}
-
-func toModel(e *event.SensorEvent, device *model.Device, now *time.Time) *model.SensorEvent {
-	r := &model.SensorEvent{}
-	r.DeviceId = device.ID
-	r.RealTime = now.UTC()
-	r.DeviceTime = time.Time(e.Time)
-	r.ChipTemperature = e.ChipTemperature()
-
-	readings := e.Readings()
-	r.Period, r.Power, r.ApparentPower, r.ReactivePower = readings.Period, readings.Power, readings.ApparentPower, readings.ReactivePower
-	r.Voltage, r.Current = readings.Voltage, readings.Current
-	r.CO2, r.Temperature, r.Humidity, r.DewPoint, r.Pressure = readings.CO2, readings.Temperature, readings.Humidity, readings.DewPoint, readings.Pressure
-	r.DcVoltage, r.DcCurrent, r.DcPower = readings.DcVoltage, readings.DcCurrent, readings.DcPower
-	r.GasRatio, r.GasRs = readings.GasRatio, readings.GasRs
-	r.Illuminance, r.ColorTemp = readings.Illuminance, readings.ColorTemp
-
-	return r
 }

@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
-	"slices"
 	"smart-home/internal"
 	"smart-home/model"
 	"strconv"
@@ -98,31 +97,26 @@ const (
 	maxRawDuration = 24 * time.Hour
 )
 
-// rawRecords returns the rows in (till-duration, till] by time. till is truncated to the
-// minute, so the range runs a minute past it to include the latest readings.
+// rawRecords returns the rows in (till-duration, till] by time, one point per bucket time
+// (all series of the device). till is truncated to the minute, so the range runs a minute
+// past it to include the latest readings.
 func (c *SensorsConfigurableController) rawRecords(
 	ctx context.Context,
 	state *internal.DeviceState,
 	duration time.Duration,
 	till time.Time,
 ) ([]DeviceSensorEvent, error) {
-	rows, err := c.loadAggregates(ctx, state.Device.ID, till.Add(-duration), till.Add(time.Minute))
+	rows, err := c.buffer.LoadValues(ctx, state.Device.ID, till.Add(-duration), till.Add(time.Minute))
 	if err != nil {
 		return nil, err
 	}
-	slices.SortFunc(rows, func(a, b model.SensorAggregate) int {
-		return a.BucketTime.Compare(b.BucketTime)
-	})
+	preferred := c.buffer.PreferredSeries(state.Device.ID)
 
-	records := make([]DeviceSensorEvent, 0, len(rows))
-	for i := 0; i < len(rows); i++ {
-		row := rows[i]
-		// a buffered reading can share its second with a stored one
-		for i+1 < len(rows) && rows[i+1].BucketTime.Equal(row.BucketTime) {
-			i++
-			internal.MergeInto(&row, &rows[i])
-		}
-		records = append(records, newDeviceSensorEvent(row.BucketTime, &row))
+	// a buffered reading can share its second with a stored one: valuesByTime merges them
+	points := valuesByTime(rows)
+	records := make([]DeviceSensorEvent, 0, len(points))
+	for _, p := range points {
+		records = append(records, newDeviceSensorEvent(p.at, preferred, p.values))
 	}
 	return records, nil
 }
@@ -142,8 +136,9 @@ func (c *SensorsConfigurableController) buildRecords(
 	scale time.Duration,
 	till time.Time,
 ) ([]DeviceSensorEvent, error) {
+	deviceId := state.Device.ID
 	from, end := chartRange(till, duration, scale)
-	rows, err := c.loadAggregates(ctx, state.Device.ID, from, end)
+	rows, err := c.buffer.LoadValues(ctx, deviceId, from, end)
 	if err != nil {
 		return nil, err
 	}
@@ -154,13 +149,14 @@ func (c *SensorsConfigurableController) buildRecords(
 		end = newEnd
 		if wider.Before(from) {
 			from = wider
-			if rows, err = c.loadAggregates(ctx, state.Device.ID, from, end); err != nil {
+			if rows, err = c.buffer.LoadValues(ctx, deviceId, from, end); err != nil {
 				return nil, err
 			}
 		}
 	}
 
-	points := make([]*model.SensorAggregate, int(end.Sub(from)/scale))
+	// per step: series ID -> merged value
+	points := make([]map[uint]*model.SensorValue, int(end.Sub(from)/scale))
 	for i := range rows {
 		bt := rows[i].BucketTime.UTC()
 		if bt.Before(from) || !bt.Before(end) {
@@ -168,17 +164,21 @@ func (c *SensorsConfigurableController) buildRecords(
 		}
 		idx := int(bt.Sub(from) / scale)
 		if points[idx] == nil {
-			p := rows[i]
-			points[idx] = &p
+			points[idx] = map[uint]*model.SensorValue{}
+		}
+		if existing, ok := points[idx][rows[i].SeriesId]; ok {
+			internal.MergeValue(existing, &rows[i])
 		} else {
-			internal.MergeInto(points[idx], &rows[i])
+			v := rows[i]
+			points[idx][v.SeriesId] = &v
 		}
 	}
 
+	preferred := c.buffer.PreferredSeries(deviceId)
 	records := make([]DeviceSensorEvent, len(points))
 	for i, point := range points {
 		at := from.Add(time.Duration(i) * scale)
-		records[i] = newDeviceSensorEvent(at, point)
+		records[i] = newDeviceSensorEvent(at, preferred, point)
 	}
 	return records, nil
 }
@@ -192,21 +192,7 @@ func chartRange(till time.Time, duration, scale time.Duration) (time.Time, time.
 	return from, end
 }
 
-// loadAggregates returns the device's stored rows in [from, end) plus the unflushed buffer.
-func (c *SensorsConfigurableController) loadAggregates(ctx context.Context, deviceId uint, from, end time.Time) ([]model.SensorAggregate, error) {
-	rows, err := gorm.G[model.SensorAggregate](c.db).
-		Where("device_id = ?", deviceId).
-		Where("datetime(bucket_time) >= datetime(?)", from.UTC().Format(time.DateTime)).
-		Where("datetime(bucket_time) < datetime(?)", end.UTC().Format(time.DateTime)).
-		Order("bucket_time ASC").
-		Find(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return append(rows, c.buffer.GetBufferAggregates(deviceId)...), nil
-}
-
-func coarsestBucket(rows []model.SensorAggregate) time.Duration {
+func coarsestBucket(rows []model.SensorValue) time.Duration {
 	var coarsest uint
 	for _, row := range rows {
 		coarsest = max(coarsest, row.BucketSeconds)
@@ -214,60 +200,52 @@ func coarsestBucket(rows []model.SensorAggregate) time.Duration {
 	return time.Duration(coarsest) * time.Second
 }
 
-// newDeviceSensorEvent maps a merged step to a chart point; agg is nil for an empty step.
-func newDeviceSensorEvent(at time.Time, agg *model.SensorAggregate) DeviceSensorEvent {
+// newDeviceSensorEvent maps a merged step (series ID -> value) to a chart point: each fixed
+// field takes the first preferred series of its kind with a value. values is nil for an
+// empty step.
+func newDeviceSensorEvent(at time.Time, preferred map[string][]uint, values map[uint]*model.SensorValue) DeviceSensorEvent {
 	record := DeviceSensorEvent{Time: at.Unix()}
-	if agg == nil {
+	if values == nil {
 		return record
 	}
-
-	record.PowerConsumed = agg.PowerConsumed
-	if record.PowerConsumed == nil && agg.PowerAvg != nil {
-		record.PowerConsumed = new(float32(0))
+	pick := func(kind string) *model.SensorValue {
+		v, _ := internal.PickValue(preferred, kind, values)
+		return v
 	}
-	record.PowerAvg = toUint(agg.PowerAvg)
-	record.PowerMin = toUint(agg.PowerMin)
-	record.PowerMax = toUint(agg.PowerMax)
-	record.CurrentAvg = agg.CurrentAvg
-	record.CurrentMin = agg.CurrentMin
-	record.CurrentMax = agg.CurrentMax
-	record.VoltageAvg = toUint(agg.VoltageAvg)
-	record.VoltageMin = toUint(agg.VoltageMin)
-	record.VoltageMax = toUint(agg.VoltageMax)
+	f32 := func(v *model.SensorValue) (avg, lo, hi *float32) {
+		if v == nil {
+			return nil, nil, nil
+		}
+		return new(float32(v.Avg)), new(float32(v.Min)), new(float32(v.Max))
+	}
+	u := func(v *model.SensorValue) (avg, lo, hi *uint) {
+		a, l, h := f32(v)
+		return toUint(a), toUint(l), toUint(h)
+	}
 
-	record.CO2Avg = toUint(agg.CO2Avg)
-	record.CO2Min = toUint(agg.CO2Min)
-	record.CO2Max = toUint(agg.CO2Max)
-	record.TemperatureAvg = agg.TemperatureAvg
-	record.TemperatureMin = agg.TemperatureMin
-	record.TemperatureMax = agg.TemperatureMax
-	record.HumidityAvg = agg.HumidityAvg
-	record.HumidityMin = agg.HumidityMin
-	record.HumidityMax = agg.HumidityMax
-	record.PressureAvg = agg.PressureAvg
-	record.PressureMin = agg.PressureMin
-	record.PressureMax = agg.PressureMax
-	record.GasRatioAvg = agg.GasRatioAvg
-	record.GasRatioMin = agg.GasRatioMin
-	record.GasRatioMax = agg.GasRatioMax
-	record.IlluminanceAvg = agg.IlluminanceAvg
-	record.IlluminanceMin = agg.IlluminanceMin
-	record.IlluminanceMax = agg.IlluminanceMax
-	record.ColorTempAvg = agg.ColorTempAvg
-	record.ColorTempMin = agg.ColorTempMin
-	record.ColorTempMax = agg.ColorTempMax
+	if power := pick(model.KindPower); power != nil {
+		record.PowerConsumed = new(float32(0))
+		if power.Sum != nil {
+			record.PowerConsumed = new(float32(*power.Sum))
+		}
+		record.PowerAvg, record.PowerMin, record.PowerMax = u(power)
+	}
+	record.CurrentAvg, record.CurrentMin, record.CurrentMax = f32(pick(model.KindCurrent))
+	record.VoltageAvg, record.VoltageMin, record.VoltageMax = u(pick(model.KindVoltage))
 
-	record.DcVoltageAvg = agg.DcVoltageAvg
-	record.DcVoltageMin = agg.DcVoltageMin
-	record.DcVoltageMax = agg.DcVoltageMax
-	record.DcCurrentAvg = agg.DcCurrentAvg
-	record.DcCurrentMin = agg.DcCurrentMin
-	record.DcCurrentMax = agg.DcCurrentMax
-	record.DcPowerAvg = agg.DcPowerAvg
-	record.DcPowerMin = agg.DcPowerMin
-	record.DcPowerMax = agg.DcPowerMax
+	record.CO2Avg, record.CO2Min, record.CO2Max = u(pick(model.KindCo2))
+	record.TemperatureAvg, record.TemperatureMin, record.TemperatureMax = f32(pick(model.KindTemperature))
+	record.HumidityAvg, record.HumidityMin, record.HumidityMax = f32(pick(model.KindHumidity))
+	record.PressureAvg, record.PressureMin, record.PressureMax = f32(pick(model.KindPressure))
+	record.GasRatioAvg, record.GasRatioMin, record.GasRatioMax = f32(pick(model.KindGasRatio))
+	record.IlluminanceAvg, record.IlluminanceMin, record.IlluminanceMax = f32(pick(model.KindIlluminance))
+	record.ColorTempAvg, record.ColorTempMin, record.ColorTempMax = f32(pick(model.KindColorTemp))
 
-	record.ChipTemperatureAvg = agg.ChipTemperatureAvg
+	record.DcVoltageAvg, record.DcVoltageMin, record.DcVoltageMax = f32(pick(model.KindDcVoltage))
+	record.DcCurrentAvg, record.DcCurrentMin, record.DcCurrentMax = f32(pick(model.KindDcCurrent))
+	record.DcPowerAvg, record.DcPowerMin, record.DcPowerMax = f32(pick(model.KindDcPower))
+
+	record.ChipTemperatureAvg, _, _ = f32(pick(model.KindChipTemperature))
 	return record
 }
 

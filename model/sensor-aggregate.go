@@ -2,6 +2,11 @@ package model
 
 import "time"
 
+// SensorAggregate is the LEGACY per-device bucket table (a column per metric), replaced by
+// SensorSeries / SensorValue. It is no longer written or auto-migrated: the series migration
+// (container/series-migration.go) copies it into sensor_value, verifies the copy and then drops
+// it; the struct only names its columns for that. Remove it with the migration.
+//
 // SensorAggregate is one bucket of a device's readings. BucketSeconds is the bucket size
 // (0 = a raw reading); a device's rows can have different sizes, see StorageTier.
 // Min/max are nil on rows written before they were tracked.

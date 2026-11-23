@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"slices"
 	"smart-home/internal"
 	"smart-home/model"
 	"strconv"
@@ -39,7 +40,7 @@ func (c *SensorsController) GetMulti(w http.ResponseWriter, r *http.Request) {
 		}
 		uid := uint(id)
 		state := c.states.GetById(uid)
-		if state == nil {
+		if state == nil || states[uid] != nil {
 			continue
 		}
 		deviceIds = append(deviceIds, uid)
@@ -58,35 +59,67 @@ func (c *SensorsController) GetMulti(w http.ResponseWriter, r *http.Request) {
 		for _, state := range states {
 			window = max(window, 2*state.Device.Tiers()[0].StepDuration())
 		}
-		dbAggs, err := gorm.G[model.SensorAggregate](c.db).
-			Where("device_id IN ?", deviceIds).
-			Where("datetime(bucket_time) > datetime(?)", time.Now().Add(-window).UTC().Format(time.DateTime)).
-			Order("bucket_time ASC").
-			Find(r.Context())
+		stored, err := c.s.LoadRecentValues(r.Context(), deviceIds, time.Now().Add(-window))
 		if err != nil {
 			slog.Error("[sensors][multi] error", "err", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
+		buffer := c.s.GetBuffer()
 
-		for _, agg := range dbAggs {
-			if _, ok := states[agg.DeviceId]; !ok {
-				continue
+		for _, id := range deviceIds {
+			preferred := c.s.PreferredSeries(id)
+			// one record per stored bucket time (all series of the device)
+			for _, point := range valuesByTime(stored[id]) {
+				result[id] = append(result[id], newSensorEventFromValues(id, point.at, preferred, point.values))
 			}
-			record := NewSensorEventFromAggregate(&agg)
-			result[agg.DeviceId] = append(result[agg.DeviceId], record)
-		}
-
-		// Include buffered (unflushed) events as individual readings
-		for _, currentEvent := range c.s.GetBuffer() {
-			if _, ok := states[currentEvent.DeviceId]; !ok {
-				continue
+			// buffered (unflushed) readings as individual readings, one per message
+			var pending []model.SensorValue
+			for _, v := range buffer {
+				if v.DeviceId == id {
+					pending = append(pending, model.SensorValue{SeriesId: v.SeriesId, BucketTime: v.At, Count: 1, Avg: v.Value, Min: v.Value, Max: v.Value})
+				}
 			}
-			record := NewSensorEvent(currentEvent)
-			result[currentEvent.DeviceId] = append(result[currentEvent.DeviceId], record)
+			for _, point := range valuesByTime(pending) {
+				result[id] = append(result[id], newSensorEventFromValues(id, point.at, preferred, point.values))
+			}
 		}
 	}
 
 	slog.Info("[sensors][multi] success", "count", len(deviceIds))
 	json.NewEncoder(w).Encode(result)
+}
+
+// timePoint is the values of a device's series at one time, keyed by series ID.
+type timePoint struct {
+	at     time.Time
+	values map[uint]*model.SensorValue
+}
+
+// valuesByTime groups rows by bucket time (same instant, whatever the stored offset), in time
+// order. Rows of one series at the same time are merged.
+func valuesByTime(rows []model.SensorValue) []timePoint {
+	byUnix := map[int64]*timePoint{}
+	var points []*timePoint
+	for i := range rows {
+		row := rows[i]
+		key := row.BucketTime.UnixNano()
+		p, ok := byUnix[key]
+		if !ok {
+			p = &timePoint{at: row.BucketTime, values: map[uint]*model.SensorValue{}}
+			byUnix[key] = p
+			points = append(points, p)
+		}
+		if existing, ok := p.values[row.SeriesId]; ok {
+			internal.MergeValue(existing, &row)
+		} else {
+			p.values[row.SeriesId] = &row
+		}
+	}
+	slices.SortFunc(points, func(a, b *timePoint) int { return a.at.Compare(b.at) })
+	result := make([]timePoint, len(points))
+	for i, p := range points {
+		result[i] = *p
+	}
+	return result
 }

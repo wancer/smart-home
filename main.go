@@ -56,8 +56,10 @@ func main() {
 					defer close(firmwareStop)
 					defer close(telegramStop)
 					defer close(notifierStop)
-					defer container.MqttClient.Disconnect(10_000) // 10s == 10k ms
+					// defers run in reverse: MQTT disconnects first, then the final flush
+					// stores the last messages
 					defer container.Storage.Shutdown()
+					defer container.MqttClient.Disconnect(10_000) // 10s == 10k ms
 
 					var err error
 					go func() {

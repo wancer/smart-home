@@ -148,8 +148,15 @@ func (c *DevicesController) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	deviceId := state.Device.ID
 
-	if err := c.db.WithContext(r.Context()).Delete(&model.Device{}, deviceId).Error; err != nil {
+	// unsubscribe first, so telemetry can't recreate series of the deleted device
+	c.consumer.Remove(deviceId)
+	// the device row, its series and their values in one transaction
+	err := c.storage.DeleteDevice(c.db.WithContext(r.Context()), deviceId, func(tx *gorm.DB) error {
+		return tx.Delete(&model.Device{}, deviceId).Error
+	})
+	if err != nil {
 		slog.Error("[device][delete] error", "err", err)
+		c.consumer.Sync(state.Device) // still there: subscribe again
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -161,7 +168,6 @@ func (c *DevicesController) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := c.notifier.Reload(); err != nil {
 		slog.Error("[device][delete] notifier reload error", "err", err)
 	}
-	c.consumer.Remove(deviceId)
 	c.states.Delete(deviceId)
 	slog.Info("[device][delete] success", "id", deviceId)
 	w.WriteHeader(http.StatusNoContent)
@@ -182,19 +188,17 @@ func (c *DevicesController) WipeSensorData(w http.ResponseWriter, r *http.Reques
 	}
 	deviceId := state.Device.ID
 
-	if err := c.db.WithContext(r.Context()).Where("device_id = ?", deviceId).Delete(&model.SensorAggregate{}).Error; err != nil && err != gorm.ErrRecordNotFound {
-		slog.Error("[device][wipe-sensor-data] aggregate error", "err", err, "id", deviceId)
+	// Series, values and daily history in one transaction. The legacy sensor_aggregate table
+	// (only kept after a failed migration check, see container/series-migration.go) is not touched.
+	err := c.storage.DeleteDevice(c.db.WithContext(r.Context()), deviceId, func(tx *gorm.DB) error {
+		return tx.Where("device_id = ?", deviceId).Delete(&model.SensorHistory{}).Error
+	})
+	if err != nil {
+		slog.Error("[device][wipe-sensor-data] error", "err", err, "id", deviceId)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	if err := c.db.WithContext(r.Context()).Where("device_id = ?", deviceId).Delete(&model.SensorHistory{}).Error; err != nil && err != gorm.ErrRecordNotFound {
-		slog.Error("[device][wipe-sensor-data] history error", "err", err, "id", deviceId)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
-	c.storage.ClearBuffer(deviceId)
 	slog.Info("[device][wipe-sensor-data] success", "id", deviceId)
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -32,7 +32,7 @@ func Build(cfg *config.Config) (*Container, error) {
 		return nil, err
 	}
 
-	init := NewDatabaseInitializer(db)
+	init := NewDatabaseInitializer(db, cfg.Storage.DSN)
 	if err := init.migrate(); err != nil {
 		return nil, err
 	}

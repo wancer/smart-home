@@ -32,6 +32,7 @@ func (h *EventHandler) HandleState(state *internal.DeviceState, e *event.Status1
 	}
 	readings := sns.Readings()
 	state.SetReadings(&readings)
+	state.SetValues(h.storage.SeriesValues(state.Device.ID, sns.SeriesReadings()))
 	if sns.Energy != nil {
 		state.LastUpdate = &now
 	}

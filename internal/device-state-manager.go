@@ -93,6 +93,10 @@ type DeviceState struct {
 
 	// Raw is every numeric sensor field of the last telemetry (event.SensorEvent.Raw); nil while offline
 	Raw map[string]map[string]float64
+	// Values are the live series values of the last telemetry, keyed by sensor_series ID (series
+	// metadata: Storage.DeviceSeries); nil while offline. The fixed fields above (Power, ...)
+	// are kept for the current API until the clients use series.
+	Values map[uint]float64
 
 	ChipTemperature *float32   // ESP32 internal temperature (SetOption146 1)
 	LastTelemetry   *time.Time // last tele/SENSOR message; IR availability falls back to LWT while nil
@@ -112,11 +116,17 @@ func (s *DeviceState) SetReadings(r *event.Readings) {
 	s.Illuminance, s.ColorTemp = r.Illuminance, r.ColorTemp
 }
 
+// SetValues replaces the live series values with the ones a telemetry message reported.
+func (s *DeviceState) SetValues(values map[uint]float64) {
+	s.Values = values
+}
+
 // ClearReadings forgets the live sensor values, e.g. when the device goes offline.
 func (s *DeviceState) ClearReadings() {
 	s.SetReadings(&event.Readings{})
 	s.ClearMq()
 	s.Raw = nil
+	s.Values = nil
 }
 
 type DeviceUptime struct {

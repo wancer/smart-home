@@ -2,7 +2,10 @@ package event
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
+
+	"smart-home/model"
 )
 
 func TestReadingsBME280AndINA219(t *testing.T) {
@@ -133,4 +136,163 @@ func TestRawValues(t *testing.T) {
 	if _, ok := e.Raw["PZEM"]["Name"]; ok {
 		t.Error("strings must be skipped")
 	}
+}
+
+// series is a SeriesReadings entry with its kind, for comparing in tests.
+type series struct {
+	Source, Field string
+	Value         float64
+	Kind          string
+}
+
+func seriesOf(t *testing.T, payload string) []series {
+	t.Helper()
+	var e SensorEvent
+	if err := json.Unmarshal([]byte(payload), &e); err != nil {
+		t.Fatal(err)
+	}
+	return seriesFrom(&e)
+}
+
+func seriesFrom(e *SensorEvent) []series {
+	var out []series
+	for _, r := range e.SeriesReadings() {
+		out = append(out, series{r.Source, r.Field, r.Value, model.SeriesKind(r.Source, r.Field)})
+	}
+	return out
+}
+
+func checkSeries(t *testing.T, got, want []series) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("got %d series, want %d:\n got  %+v\n want %+v", len(got), len(want), got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("series %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+// The sample payload of docs/tasks/sensor-series.md: both illuminances are kept.
+func TestSeriesReadingsTaskSample(t *testing.T) {
+	got := seriesOf(t, `{"Time":"2026-11-23T17:28:42","ts":1795447722,"ESP32":{"Temperature":18.33333},
+		"BH1750":{"Illuminance":223.5482},
+		"TCS34725":{"Red":41.78241,"Green":34.01711,"Blue":22.79176,"Clear":30.87053,"Illuminance":188.7146,"ColorTemperature":3469.305}}`)
+	checkSeries(t, got, []series{
+		{"BH1750", "Illuminance", 223.5482, model.KindIlluminance},
+		{"ESP32", "Temperature", 18.33333, model.KindChipTemperature},
+		{"TCS34725", "Blue", 22.79176, model.KindRaw},
+		{"TCS34725", "Clear", 30.87053, model.KindRaw},
+		{"TCS34725", "ColorTemperature", 3469.305, model.KindColorTemp},
+		{"TCS34725", "Green", 34.01711, model.KindRaw},
+		{"TCS34725", "Illuminance", 188.7146, model.KindIlluminance},
+		{"TCS34725", "Red", 41.78241, model.KindRaw},
+	})
+}
+
+func TestSeriesReadingsEnergyPlug(t *testing.T) {
+	got := seriesOf(t, `{"Time":"2026-11-20T12:00:00","ENERGY":{"TotalStartTime":"2024-01-01T00:00:00",
+		"Total":123.456,"Yesterday":1.2,"Today":0.5,"Period":3,"Power":45,"ApparentPower":50,
+		"ReactivePower":20,"Factor":0.9,"Voltage":230,"Current":0.217}}`)
+	checkSeries(t, got, []series{
+		{"ENERGY", "ApparentPower", 50, model.KindApparentPower},
+		{"ENERGY", "Current", 0.217, model.KindCurrent},
+		{"ENERGY", "Factor", 0.9, model.KindPowerFactor},
+		{"ENERGY", "Power", 45, model.KindPower},
+		{"ENERGY", "ReactivePower", 20, model.KindReactivePower},
+		{"ENERGY", "Voltage", 230, model.KindVoltage},
+	})
+}
+
+func TestSeriesReadingsBME280AndINA219(t *testing.T) {
+	got := seriesOf(t, `{"Time":"2026-11-20T12:00:00",
+		"BME280":{"Temperature":25.6,"Humidity":32.2,"DewPoint":7.7,"Pressure":975.6},
+		"INA219":{"Id":40,"Voltage":5.012,"Current":0.206,"Power":1.033},
+		"ESP32":{"Temperature":41.1},"PressureUnit":"hPa","TempUnit":"C"}`)
+	checkSeries(t, got, []series{
+		{"BME280", "DewPoint", 7.7, model.KindDewPoint},
+		{"BME280", "Humidity", 32.2, model.KindHumidity},
+		{"BME280", "Pressure", 975.6, model.KindPressure},
+		{"BME280", "Temperature", 25.6, model.KindTemperature},
+		{"ESP32", "Temperature", 41.1, model.KindChipTemperature},
+		{"INA219", "Current", 0.206, model.KindDcCurrent},
+		{"INA219", "Power", 1.033, model.KindDcPower},
+		{"INA219", "Voltage", 5.012, model.KindDcVoltage},
+	})
+}
+
+// Both climate sensors are kept, no precedence.
+func TestSeriesReadingsSCD40AndBME280(t *testing.T) {
+	got := seriesOf(t, `{"Time":"2026-11-20T12:00:00",
+		"SCD40":{"CarbonDioxide":600,"Temperature":30,"Humidity":40,"DewPoint":15},
+		"BME280":{"Temperature":21,"Humidity":45,"DewPoint":9,"Pressure":1000}}`)
+	checkSeries(t, got, []series{
+		{"BME280", "DewPoint", 9, model.KindDewPoint},
+		{"BME280", "Humidity", 45, model.KindHumidity},
+		{"BME280", "Pressure", 1000, model.KindPressure},
+		{"BME280", "Temperature", 21, model.KindTemperature},
+		{"SCD40", "CarbonDioxide", 600, model.KindCo2},
+		{"SCD40", "DewPoint", 15, model.KindDewPoint},
+		{"SCD40", "Humidity", 40, model.KindHumidity},
+		{"SCD40", "Temperature", 30, model.KindTemperature},
+	})
+}
+
+func TestSeriesReadingsAnalogAndMq(t *testing.T) {
+	var e SensorEvent
+	payload := `{"Time":"2026-11-22T22:08:58","ANALOG":{"A1":203,"Range1":"x"},
+		"BME280":{"Temperature":4.7,"Humidity":74.3,"DewPoint":0.5,"Pressure":976.3}}`
+	if err := json.Unmarshal([]byte(payload), &e); err != nil {
+		t.Fatal(err)
+	}
+	ratio := float32(1.5)
+	e.Mq = &MqReading{Raw: 203, Rs: 1000, RsAvg: 1100, Ratio: &ratio}
+	checkSeries(t, seriesFrom(&e), []series{
+		{"ANALOG", "A1", 203, model.KindRaw},
+		{"BME280", "DewPoint", 0.5, model.KindDewPoint},
+		{"BME280", "Humidity", 74.3, model.KindHumidity},
+		{"BME280", "Pressure", 976.3, model.KindPressure},
+		{"BME280", "Temperature", 4.7, model.KindTemperature},
+		{"MQ", "Ratio", 1.5, model.KindGasRatio},
+		{"MQ", "Rs", 1000, model.KindRaw},
+	})
+
+	// not calibrated: Rs only
+	e.Mq.Ratio = nil
+	for _, s := range seriesFrom(&e) {
+		if s.Source == "MQ" && s.Field == "Ratio" {
+			t.Error("MQ.Ratio without calibration")
+		}
+	}
+
+	// ANALOG values set without Raw (built by hand) still come through
+	a := SensorEvent{Analog: map[string]float32{"A1": 512}}
+	checkSeries(t, seriesFrom(&a), []series{{"ANALOG", "A1", 512, model.KindRaw}})
+}
+
+func TestSeriesReadingsMultiPhase(t *testing.T) {
+	var e SensorEvent
+	e.Raw = map[string]map[string]float64{
+		"ENERGY": {"Voltage1": 230, "Voltage2": 231, "Power1": 10, "Power2": 20, "Today1": 1, "Total": 5},
+		"PZEM":   {"Voltage1": 229},
+	}
+	checkSeries(t, seriesFrom(&e), []series{
+		{"ENERGY", "Power1", 10, model.KindPower},
+		{"ENERGY", "Power2", 20, model.KindPower},
+		{"ENERGY", "Voltage1", 230, model.KindVoltage},
+		{"ENERGY", "Voltage2", 231, model.KindVoltage},
+		{"PZEM", "Voltage1", 229, model.KindRaw},
+	})
+}
+
+func TestSeriesReadingsSkipsNaNAndNil(t *testing.T) {
+	var n *SensorEvent
+	if r := n.SeriesReadings(); r != nil {
+		t.Errorf("nil event: %v", r)
+	}
+	e := SensorEvent{Raw: map[string]map[string]float64{
+		"X": {"A": math.NaN(), "B": math.Inf(1), "C": 1},
+	}}
+	checkSeries(t, seriesFrom(&e), []series{{"X", "C", 1, model.KindRaw}})
 }
