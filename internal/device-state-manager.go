@@ -66,7 +66,8 @@ type DeviceState struct {
 	On         *bool
 	LastUpdate *time.Time
 
-	Today *float32 // kWh consumed today (ENERGY.Today); kept while offline
+	Today   *float32 // kWh consumed today (ENERGY.Today); kept while offline
+	Voltage *uint    // live AC voltage (ENERGY.Voltage), for power calibration (PowerSet); nil while offline
 
 	// Mq is the last MQ-xxx gas sensor reading (see ComputeMq), MqAt when it came; nil while offline
 	Mq        *event.MqReading
@@ -88,9 +89,10 @@ type DeviceState struct {
 	RestartReason *string
 }
 
-// SetReadings keeps what a telemetry message reports besides the series values: today's energy total.
+// SetReadings keeps what a telemetry message reports besides the series values: today's energy
+// total and the AC voltage (power calibration).
 func (s *DeviceState) SetReadings(r *event.Readings) {
-	s.Today = r.Today
+	s.Today, s.Voltage = r.Today, r.Voltage
 }
 
 // SetValues replaces the live series values with the ones a telemetry message reported.
