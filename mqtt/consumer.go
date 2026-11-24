@@ -3,6 +3,7 @@ package mqtt
 import (
 	"fmt"
 	"log/slog"
+	"slices"
 	"smart-home/internal"
 	"smart-home/model"
 	"sync"
@@ -15,9 +16,21 @@ type Consumer struct {
 	handlers  map[string]driver.MessageHandler
 
 	lock       sync.Mutex
-	client     driver.Client   // set once connected
-	subscribed map[uint]string // device id => device topic it's subscribed with
+	client     driver.Client         // set once connected
+	subscribed map[uint]subscription // device id => what it's subscribed with
 }
+
+// subscription is the topic and platform a device is subscribed with.
+type subscription struct {
+	topic    string
+	platform string
+}
+
+// esphomeTopics are the topics an ESPHome device publishes (Tasmota-shaped, from its YAML).
+var esphomeTopics = []string{"tele/%s/SENSOR", "tele/%s/LWT", "tele/%s/STATE", "tele/%s/INFO1", "tele/%s/INFO3"}
+
+// esphomeOnlyTopics carry what Tasmota devices are polled for (STATUS2, STATUS1).
+var esphomeOnlyTopics = []string{"tele/%s/INFO1", "tele/%s/INFO3"}
 
 func NewMqttConsumer(
 	deviceMap *internal.DeviceStateManager,
@@ -25,12 +38,14 @@ func NewMqttConsumer(
 ) *Consumer {
 	return &Consumer{
 		deviceMap:  deviceMap,
-		subscribed: map[uint]string{},
+		subscribed: map[uint]subscription{},
 		handlers: map[string]driver.MessageHandler{
 			"tele/%s/SENSOR":   parser.parseSensorEvent,
 			"tele/%s/LWT":      parser.parseLwt,
 			"tele/%s/RESULT":   parser.parseTeleResult,
 			"tele/%s/STATE":    parser.parseTeleState,
+			"tele/%s/INFO1":    parser.parseInfo,
+			"tele/%s/INFO3":    parser.parseInfo,
 			"stat/%s/POWER":    parser.parsePowerEvent,
 			"stat/%s/RESULT":   parser.parseResult,
 			"stat/%s/STATUS1":  parser.parseStatus1,
@@ -57,7 +72,7 @@ func (c *Consumer) Subscribe(client driver.Client) {
 	defer c.lock.Unlock()
 
 	c.client = client
-	c.subscribed = map[uint]string{}
+	c.subscribed = map[uint]subscription{}
 
 	// ToDo: move out of here, remove states dependency
 	for _, device := range c.deviceMap.GetAll() {
@@ -70,7 +85,7 @@ func (c *Consumer) Subscribe(client driver.Client) {
 }
 
 // Sync brings the subscriptions of a created or updated device in line with its
-// Enabled flag and topic. Returns true if the device has just been subscribed.
+// Enabled flag, topic and platform. Returns true if the device has just been subscribed.
 // Failures are only logged: the next reconnect subscribes from the current state.
 func (c *Consumer) Sync(device *model.Device) bool {
 	c.lock.Lock()
@@ -80,9 +95,9 @@ func (c *Consumer) Sync(device *model.Device) bool {
 		return false
 	}
 
-	topic, ok := c.subscribed[device.ID]
-	if ok && (!device.Enabled || topic != device.Topic) {
-		c.unsubscribe(device.ID, topic)
+	sub, ok := c.subscribed[device.ID]
+	if ok && (!device.Enabled || sub != subscriptionOf(device)) {
+		c.unsubscribe(device.ID, sub)
 		ok = false
 	}
 
@@ -94,13 +109,32 @@ func (c *Consumer) Remove(deviceId uint) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if topic, ok := c.subscribed[deviceId]; ok {
-		c.unsubscribe(deviceId, topic)
+	if sub, ok := c.subscribed[deviceId]; ok {
+		c.unsubscribe(deviceId, sub)
 	}
 }
 
+func subscriptionOf(device *model.Device) subscription {
+	return subscription{topic: device.Topic, platform: device.Platform}
+}
+
+// topicTemplates are the topic templates (keys of c.handlers) a platform subscribes to.
+func (c *Consumer) topicTemplates(platform string) []string {
+	if platform == model.PlatformEsphome {
+		return esphomeTopics
+	}
+	templates := make([]string, 0, len(c.handlers))
+	for topicTpl := range c.handlers {
+		if !slices.Contains(esphomeOnlyTopics, topicTpl) {
+			templates = append(templates, topicTpl)
+		}
+	}
+	return templates
+}
+
 func (c *Consumer) subscribe(device *model.Device) bool {
-	for topicTpl, handler := range c.handlers {
+	for _, topicTpl := range c.topicTemplates(device.Platform) {
+		handler := c.handlers[topicTpl]
 		topic := fmt.Sprintf(topicTpl, device.Topic)
 		token := c.client.Subscribe(topic, 1, handler)
 		if token.Wait(); token.Error() != nil {
@@ -110,19 +144,20 @@ func (c *Consumer) subscribe(device *model.Device) bool {
 		slog.Debug("Subscribed to topic", "topic", topic)
 	}
 
-	c.subscribed[device.ID] = device.Topic
+	c.subscribed[device.ID] = subscriptionOf(device)
 	return true
 }
 
-func (c *Consumer) unsubscribe(deviceId uint, deviceTopic string) {
-	topics := make([]string, 0, len(c.handlers))
-	for topicTpl := range c.handlers {
-		topics = append(topics, fmt.Sprintf(topicTpl, deviceTopic))
+func (c *Consumer) unsubscribe(deviceId uint, sub subscription) {
+	templates := c.topicTemplates(sub.platform)
+	topics := make([]string, 0, len(templates))
+	for _, topicTpl := range templates {
+		topics = append(topics, fmt.Sprintf(topicTpl, sub.topic))
 	}
 
 	token := c.client.Unsubscribe(topics...)
 	if token.Wait(); token.Error() != nil {
-		slog.Error("Can't unsubscribe from device", "topic", deviceTopic, "err", token.Error())
+		slog.Error("Can't unsubscribe from device", "topic", sub.topic, "err", token.Error())
 	}
 	delete(c.subscribed, deviceId)
 }

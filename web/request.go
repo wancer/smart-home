@@ -25,6 +25,20 @@ func deviceState(w http.ResponseWriter, r *http.Request, states *internal.Device
 	return state
 }
 
+// tasmotaDevice is deviceState for endpoints that send Tasmota commands: a device on another
+// platform (ESPHome, configured in its YAML) is a 409.
+func tasmotaDevice(w http.ResponseWriter, r *http.Request, states *internal.DeviceStateManager) *internal.DeviceState {
+	state := deviceState(w, r, states)
+	if state == nil {
+		return nil
+	}
+	if !state.Device.IsTasmota() {
+		http.Error(w, "device is configured on the device ("+state.Device.Platform+")", http.StatusConflict)
+		return nil
+	}
+	return state
+}
+
 // irDevice is deviceState for IR-only endpoints: a device that isn't an IR remote is a 400.
 func irDevice(w http.ResponseWriter, r *http.Request, states *internal.DeviceStateManager) *model.Device {
 	state := deviceState(w, r, states)
@@ -33,6 +47,10 @@ func irDevice(w http.ResponseWriter, r *http.Request, states *internal.DeviceSta
 	}
 	if state.Device.SensorType != model.SensorTypeIR {
 		http.Error(w, "device is not an IR device", http.StatusBadRequest)
+		return nil
+	}
+	if !state.Device.IsTasmota() {
+		http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
 		return nil
 	}
 	return state.Device

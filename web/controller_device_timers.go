@@ -47,7 +47,7 @@ type TimerResponse struct {
 }
 
 func (c *DeviceTimersController) Get(w http.ResponseWriter, r *http.Request) {
-	state := deviceState(w, r, c.states)
+	state := tasmotaDevice(w, r, c.states)
 	if state == nil {
 		return
 	}
@@ -76,7 +76,7 @@ func (c *DeviceTimersController) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *DeviceTimersController) Set(w http.ResponseWriter, r *http.Request) {
-	state := deviceState(w, r, c.states)
+	state := tasmotaDevice(w, r, c.states)
 	if state == nil {
 		return
 	}

@@ -37,7 +37,7 @@ func (p *Publisher) PublishStates(device *model.Device) {
 }
 
 func (p *Publisher) GetOnOff(device *model.Device) {
-	p.publish(device.Topic, "POWER", "")
+	p.publish(device, "POWER", "")
 }
 
 func (p *Publisher) OnOff(device *model.Device, state bool) {
@@ -48,30 +48,30 @@ func (p *Publisher) OnOff(device *model.Device, state bool) {
 		value = "OFF"
 	}
 
-	p.publish(device.Topic, "POWER", value)
+	p.publish(device, "POWER", value)
 }
 
 func (p *Publisher) GetSensors(device *model.Device) {
-	p.publish(device.Topic, "STATUS10", "10")
+	p.publish(device, "STATUS10", "10")
 }
 
 // GetStatus returns the same payload as tele/STATE (uptime, load average, ...), wrapped in StatusSTS.
 func (p *Publisher) GetStatus(device *model.Device) {
-	p.publish(device.Topic, "STATUS11", "11")
+	p.publish(device, "STATUS11", "11")
 }
 
 // GetRestartReason requests STATUS1 (StatusPRM.RestartReason).
 func (p *Publisher) GetRestartReason(device *model.Device) {
-	p.publish(device.Topic, "STATUS1", "1")
+	p.publish(device, "STATUS1", "1")
 }
 
 func (p *Publisher) GetFirmware(device *model.Device) {
-	p.publish(device.Topic, "STATUS2", "2")
+	p.publish(device, "STATUS2", "2")
 }
 
 // Upgrade makes the device download firmware from its OtaUrl and restart.
 func (p *Publisher) Upgrade(device *model.Device) {
-	p.publish(device.Topic, "Upgrade", "1")
+	p.publish(device, "Upgrade", "1")
 }
 
 func (p *Publisher) GetTimers(device *model.Device) {
@@ -87,57 +87,57 @@ func (p *Publisher) GetRules(device *model.Device) {
 }
 
 func (p *Publisher) GetRule(device *model.Device, n int) {
-	p.publish(device.Topic, fmt.Sprintf("Rule%d", n), "")
+	p.publish(device, fmt.Sprintf("Rule%d", n), "")
 }
 
 func (p *Publisher) SetRule(device *model.Device, n int, value string) {
-	p.publish(device.Topic, fmt.Sprintf("Rule%d", n), value)
+	p.publish(device, fmt.Sprintf("Rule%d", n), value)
 }
 
 func (p *Publisher) GetTimer(device *model.Device, n int) {
-	p.publish(device.Topic, fmt.Sprintf("Timer%d", n), "")
+	p.publish(device, fmt.Sprintf("Timer%d", n), "")
 }
 
 func (p *Publisher) SetTimer(device *model.Device, n int, value string) {
-	p.publish(device.Topic, fmt.Sprintf("Timer%d", n), value)
+	p.publish(device, fmt.Sprintf("Timer%d", n), value)
 }
 
 func (p *Publisher) SetVoltage(device *model.Device, voltage int) {
 	value := fmt.Sprintf("%d", voltage)
-	p.publish(device.Topic, "VoltageSet", value)
+	p.publish(device, "VoltageSet", value)
 }
 
 func (p *Publisher) SetPower(device *model.Device, volts uint, power int) {
 	value := fmt.Sprintf("%d, %d", power, volts)
-	p.publish(device.Topic, "PowerSet", value)
+	p.publish(device, "PowerSet", value)
 }
 
 func (p *Publisher) GetTimezone(device *model.Device) {
-	p.publish(device.Topic, "Timezone", "")
+	p.publish(device, "Timezone", "")
 }
 
 func (p *Publisher) SetTimezone(device *model.Device, offset string) {
-	p.publish(device.Topic, "Timezone", offset)
+	p.publish(device, "Timezone", offset)
 }
 
 func (p *Publisher) GetTimeStd(device *model.Device) {
-	p.publish(device.Topic, "TimeStd", "")
+	p.publish(device, "TimeStd", "")
 }
 
 func (p *Publisher) SetTimeStd(device *model.Device, value string) {
-	p.publish(device.Topic, "TimeStd", value)
+	p.publish(device, "TimeStd", value)
 }
 
 func (p *Publisher) GetTimeDst(device *model.Device) {
-	p.publish(device.Topic, "TimeDst", "")
+	p.publish(device, "TimeDst", "")
 }
 
 func (p *Publisher) SetTimeDst(device *model.Device, value string) {
-	p.publish(device.Topic, "TimeDst", value)
+	p.publish(device, "TimeDst", value)
 }
 
 func (p *Publisher) GetLedPower(device *model.Device) {
-	p.publish(device.Topic, "LedPower", "")
+	p.publish(device, "LedPower", "")
 }
 
 func (p *Publisher) SetLedPower(device *model.Device, state bool) {
@@ -145,28 +145,28 @@ func (p *Publisher) SetLedPower(device *model.Device, state bool) {
 	if state {
 		value = "ON"
 	}
-	p.publish(device.Topic, "LedPower", value)
+	p.publish(device, "LedPower", value)
 }
 
 func (p *Publisher) GetLedState(device *model.Device) {
-	p.publish(device.Topic, "LedState", "")
+	p.publish(device, "LedState", "")
 }
 
 func (p *Publisher) SetLedState(device *model.Device, value int) {
-	p.publish(device.Topic, "LedState", fmt.Sprintf("%d", value))
+	p.publish(device, "LedState", fmt.Sprintf("%d", value))
 }
 
 // GetTemplate asks for the GPIO template: relays, LEDs / lights, IR (stored in the device profile).
 func (p *Publisher) GetTemplate(device *model.Device) {
-	p.publish(device.Topic, "Template", "")
+	p.publish(device, "Template", "")
 }
 
 // GetLight asks for the light state (power, dimmer, HSB colour) in one reply.
 func (p *Publisher) GetLight(device *model.Device, rgb bool) {
 	if rgb {
-		p.publish(device.Topic, "HSBColor", "")
+		p.publish(device, "HSBColor", "")
 	} else {
-		p.publish(device.Topic, "Dimmer", "")
+		p.publish(device, "Dimmer", "")
 	}
 }
 
@@ -176,29 +176,29 @@ func (p *Publisher) SetLightPower(device *model.Device, index int, state bool) {
 	if state {
 		value = "ON"
 	}
-	p.publish(device.Topic, fmt.Sprintf("POWER%d", index), value)
+	p.publish(device, fmt.Sprintf("POWER%d", index), value)
 }
 
 func (p *Publisher) SetDimmer(device *model.Device, value int) {
-	p.publish(device.Topic, "Dimmer", fmt.Sprintf("%d", value))
+	p.publish(device, "Dimmer", fmt.Sprintf("%d", value))
 }
 
 // SetHueSat changes the colour, keeping the brightness (dimmer).
 func (p *Publisher) SetHueSat(device *model.Device, hue, sat uint) {
-	p.publish(device.Topic, "Backlog", fmt.Sprintf("HSBColor1 %d; HSBColor2 %d", hue, sat))
+	p.publish(device, "Backlog", fmt.Sprintf("HSBColor1 %d; HSBColor2 %d", hue, sat))
 }
 
 func (p *Publisher) GetTelePeriod(device *model.Device) {
-	p.publish(device.Topic, "TelePeriod", "")
+	p.publish(device, "TelePeriod", "")
 }
 
 func (p *Publisher) SetTelePeriod(device *model.Device, value int) {
 	formatted := fmt.Sprintf("%d", value)
-	p.publish(device.Topic, "TelePeriod", formatted)
+	p.publish(device, "TelePeriod", formatted)
 }
 
 func (p *Publisher) GetLedPwmMode(device *model.Device) {
-	p.publish(device.Topic, "LedPwmMode", "")
+	p.publish(device, "LedPwmMode", "")
 }
 
 func (p *Publisher) SetLedPwmMode(device *model.Device, state bool) {
@@ -208,29 +208,35 @@ func (p *Publisher) SetLedPwmMode(device *model.Device, state bool) {
 	} else {
 		value = "OFF"
 	}
-	p.publish(device.Topic, "LedPwmMode", value)
+	p.publish(device, "LedPwmMode", value)
 }
 
 func (p *Publisher) GetLedPwmOff(device *model.Device) {
-	p.publish(device.Topic, "LedPwmOff", "")
+	p.publish(device, "LedPwmOff", "")
 }
 
 func (p *Publisher) SetLedPwmOff(device *model.Device, value int) {
 	formatted := fmt.Sprintf("%d", value)
-	p.publish(device.Topic, "LedPwmOff", formatted)
+	p.publish(device, "LedPwmOff", formatted)
 }
 
 func (p *Publisher) GetLedPwmOn(device *model.Device) {
-	p.publish(device.Topic, "LedPwmOn", "")
+	p.publish(device, "LedPwmOn", "")
 }
 
 func (p *Publisher) SetLedPwmOn(device *model.Device, value int) {
 	formatted := fmt.Sprintf("%d", value)
-	p.publish(device.Topic, "LedPwmOn", formatted)
+	p.publish(device, "LedPwmOn", formatted)
 }
 
-func (p *Publisher) publish(device string, command string, value string) {
-	topic := fmt.Sprintf("cmnd/%s/%s", device, command)
+// publish sends a Tasmota command. Other platforms (ESPHome) are configured in their YAML
+// and never get one.
+func (p *Publisher) publish(device *model.Device, command string, value string) {
+	if !device.IsTasmota() {
+		slog.Debug("Not a Tasmota device, command skipped", "topic", device.Topic, "command", command)
+		return
+	}
+	topic := fmt.Sprintf("cmnd/%s/%s", device.Topic, command)
 	token := p.client.Publish(topic, 1, false, value)
 	token.Wait()
 
@@ -240,5 +246,5 @@ func (p *Publisher) publish(device string, command string, value string) {
 // SendIR transmits an infra-red code via Tasmota: cmnd/<topic>/IRsend {"Protocol":..,"Bits":..,"Data":"0x.."}
 func (p *Publisher) SendIR(device *model.Device, protocol string, bits int, code string) {
 	payload := fmt.Sprintf(`{"Protocol":%q,"Bits":%d,"Data":%q}`, protocol, bits, code)
-	p.publish(device.Topic, "IRsend", payload)
+	p.publish(device, "IRsend", payload)
 }

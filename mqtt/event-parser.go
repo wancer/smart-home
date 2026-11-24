@@ -68,6 +68,18 @@ func (c *EventParser) parseState(_ driver.Client, msg driver.Message) {
 	c.dispatcher.DispatchMqqt(&parsed, msg.Topic())
 }
 
+// parseInfo handles the boot messages tele/<topic>/INFO1 and INFO3 (ESPHome devices only).
+func (c *EventParser) parseInfo(_ driver.Client, msg driver.Message) {
+	var parsed event.Info
+	if err := json.Unmarshal(msg.Payload(), &parsed); err != nil {
+		slog.Error("CANT_PARSE_MSG", "err", err, "topic", msg.Topic(), "payload", string(msg.Payload()))
+		return
+	}
+
+	slog.Debug("[event] info", "event", string(msg.Payload()))
+	c.dispatcher.DispatchMqqt(&parsed, msg.Topic())
+}
+
 // parseTeleState handles the periodic tele/<topic>/STATE message.
 func (c *EventParser) parseTeleState(_ driver.Client, msg driver.Message) {
 	var parsed event.TeleState

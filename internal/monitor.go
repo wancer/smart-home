@@ -70,7 +70,8 @@ const defaultTelePeriod = 300 * time.Second
 // OfflineTimeout is how long a device may stay silent before it's marked offline: the
 // device's own setting, or by default two missed TelePeriods (at least a minute), so a
 // longer TelePeriod doesn't make the device flap. Until the device reports its TelePeriod,
-// Tasmota's default is assumed.
+// Tasmota's default is assumed. Devices that never report one (ESPHome) use the observed
+// interval between their telemetry messages instead.
 func OfflineTimeout(state *DeviceState) time.Duration {
 	if state.Device.OfflineTimeout > 0 {
 		return time.Duration(state.Device.OfflineTimeout) * time.Second
@@ -78,6 +79,8 @@ func OfflineTimeout(state *DeviceState) time.Duration {
 	period := defaultTelePeriod
 	if state.Config.TelePeriod != nil && *state.Config.TelePeriod > 0 {
 		period = time.Duration(*state.Config.TelePeriod) * time.Second
+	} else if !state.Device.IsTasmota() && state.TelemetryInterval > 0 {
+		period = state.TelemetryInterval
 	}
 	return max(time.Minute, 2*period+30*time.Second)
 }

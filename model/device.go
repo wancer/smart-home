@@ -14,6 +14,20 @@ const (
 	SensorTypeMulti = "multi"
 )
 
+// Platforms: the firmware a device runs, set in devices admin.
+const (
+	// PlatformTasmota is polled and controlled over cmnd/<topic>/...
+	PlatformTasmota = "tasmota"
+	// PlatformEsphome is configured in its YAML and only publishes Tasmota-shaped
+	// tele/<topic>/SENSOR, STATE and LWT. Nothing is ever sent to it.
+	PlatformEsphome = "esphome"
+)
+
+// ValidPlatform reports whether p is a known platform.
+func ValidPlatform(p string) bool {
+	return p == PlatformTasmota || p == PlatformEsphome
+}
+
 // DeviceTemplate is the Tasmota GPIO template (reply to the `Template` command).
 type DeviceTemplate struct {
 	Name string `json:"name"`
@@ -27,6 +41,8 @@ type Device struct {
 	Name    string `gorm:"size:255;not null"`
 	Topic   string `gorm:"uniqueIndex;size:255;not null"`
 	Enabled bool   `gorm:"not null;default:true"`
+	// Platform is the device firmware (PlatformTasmota, PlatformEsphome).
+	Platform string `gorm:"size:16;not null;default:tasmota"`
 	// SensorType is detected from the profile; new devices start as SensorTypeOther, set explicitly
 	// on create (the column default is a leftover, changing it would make GORM rebuild the table).
 	SensorType string `gorm:"default:energy"`
@@ -59,6 +75,11 @@ func (d *Device) Tiers() []StorageTier {
 		return DefaultStorageTiers
 	}
 	return d.StorageTiers
+}
+
+// IsTasmota: the device takes Tasmota commands (polling, control, profile, LED, timers, ...).
+func (d *Device) IsTasmota() bool {
+	return d.Platform != PlatformEsphome
 }
 
 // AvailabilityFromLwt: devices without sensor data (IR remotes, unrecognised devices) come

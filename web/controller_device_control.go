@@ -94,7 +94,7 @@ func (c *DeviceControlController) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *DeviceControlController) GetLed(w http.ResponseWriter, r *http.Request) {
-	state := deviceState(w, r, c.states)
+	state := tasmotaDevice(w, r, c.states)
 	if state == nil {
 		return
 	}
@@ -130,12 +130,14 @@ func (c *DeviceControlController) GetTiming(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	c.pub.GetTelePeriod(state.Device)
-	c.pub.GetTimezone(state.Device)
-	c.pub.GetTimeStd(state.Device)
-	c.pub.GetTimeDst(state.Device)
-	c.pub.GetStatus(state.Device) // uptime
-	time.Sleep(3 * time.Second)
+	if state.Device.IsTasmota() { // others: what they published (tele/STATE)
+		c.pub.GetTelePeriod(state.Device)
+		c.pub.GetTimezone(state.Device)
+		c.pub.GetTimeStd(state.Device)
+		c.pub.GetTimeDst(state.Device)
+		c.pub.GetStatus(state.Device) // uptime
+		time.Sleep(3 * time.Second)
+	}
 
 	cfg := TimingConfig{
 		TelePeriod:     state.Config.TelePeriod,
@@ -156,9 +158,11 @@ func (c *DeviceControlController) GetHardware(w http.ResponseWriter, r *http.Req
 	}
 
 	// chip and firmware are in the stored profile (POST /profile/refresh re-reads them)
-	c.pub.GetSensors(state.Device) // refreshes the chip temperature
-	c.pub.GetStatus(state.Device)  // load average
-	time.Sleep(3 * time.Second)
+	if state.Device.IsTasmota() { // others: what they published
+		c.pub.GetSensors(state.Device) // refreshes the chip temperature
+		c.pub.GetStatus(state.Device)  // load average
+		time.Sleep(3 * time.Second)
+	}
 
 	cfg := HardwareConfig{
 		Hardware:        chip(state.Device),
@@ -188,7 +192,7 @@ func uptime(state *internal.DeviceState) *uint64 {
 
 // UpgradeFirmware only triggers the upgrade: the device downloads the image and restarts on its own.
 func (c *DeviceControlController) UpgradeFirmware(w http.ResponseWriter, r *http.Request) {
-	state := deviceState(w, r, c.states)
+	state := tasmotaDevice(w, r, c.states)
 	if state == nil {
 		return
 	}
@@ -224,6 +228,12 @@ func (c *DeviceControlController) Do(w http.ResponseWriter, r *http.Request) {
 	if device == nil {
 		slog.Error("[device][control] error", "err", err)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	if !device.Device.IsTasmota() {
+		slog.Warn("[device][control] not a Tasmota device", "deviceId", parsed.DeviceId, "platform", device.Device.Platform)
+		http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
 		return
 	}
 

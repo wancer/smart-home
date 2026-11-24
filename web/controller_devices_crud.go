@@ -16,6 +16,9 @@ type DeviceUpsertRequest struct {
 	Topic          string `json:"topic"`
 	Enabled        bool   `json:"enabled"`
 	OfflineTimeout uint   `json:"offlineTimeout"` // seconds, 0 = auto
+	// Platform is model.PlatformTasmota or model.PlatformEsphome; omitted = tasmota on create,
+	// unchanged on update.
+	Platform *string `json:"platform"`
 	// StorageTiers is the sensor data retention: [] = the default; omitted = the default
 	// on create, unchanged on update.
 	StorageTiers *[]model.StorageTier `json:"storageTiers"`
@@ -26,6 +29,10 @@ func decodeDeviceRequest(w http.ResponseWriter, r *http.Request) (*DeviceUpsertR
 	var req DeviceUpsertRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return nil, false
+	}
+	if req.Platform != nil && !model.ValidPlatform(*req.Platform) {
+		http.Error(w, "unknown platform", http.StatusBadRequest)
 		return nil, false
 	}
 	if req.StorageTiers != nil {
@@ -47,6 +54,10 @@ func (c *DevicesController) Create(w http.ResponseWriter, r *http.Request) {
 		Name:       req.Name,
 		Topic:      req.Topic,
 		SensorType: model.SensorTypeOther, // detected once the device replies
+		Platform:   model.PlatformTasmota,
+	}
+	if req.Platform != nil {
+		device.Platform = *req.Platform
 	}
 	err := c.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(device).Error; err != nil {
@@ -94,9 +105,15 @@ func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
 	if req.StorageTiers != nil {
 		device.StorageTiers = *req.StorageTiers
 	}
+	columns := []any{"Topic", "Enabled", "Platform", "OfflineTimeout", "StorageTiers"}
+	if req.Platform != nil && *req.Platform != device.Platform {
+		device.Platform = *req.Platform
+		resetFirmwareProfile(device)
+		columns = append(columns, "Template", "Chip", "FirmwareVersion", "FirmwareBuiltAt", "FirmwareCore", "FirmwareSdk", "SensorType")
+	}
 
 	err := c.db.WithContext(r.Context()).Model(device).
-		Select("Name", "Topic", "Enabled", "OfflineTimeout", "StorageTiers").
+		Select("Name", columns...).
 		Updates(device).Error
 	if err != nil {
 		slog.Error("[device][update] error", "err", err)
@@ -107,6 +124,21 @@ func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
 	c.syncSubscription(device)
 	slog.Info("[device][update] success", "id", device.ID)
 	json.NewEncoder(w).Encode(NewDeviceResponse(state, c.storage))
+}
+
+// resetFirmwareProfile drops what was read from the old platform's firmware (template, chip,
+// version) on a platform change. Seen sensors stay; the sensor type is re-detected from
+// telemetry (an IR remote, known from its template, starts over as "other").
+func resetFirmwareProfile(d *model.Device) {
+	d.Template = nil
+	d.Chip = ""
+	d.FirmwareVersion = ""
+	d.FirmwareBuiltAt = nil
+	d.FirmwareCore = ""
+	d.FirmwareSdk = ""
+	if d.SensorType == model.SensorTypeIR {
+		d.SensorType = model.SensorTypeOther
+	}
 }
 
 // UpdateDashboard sets what the dashboard shows for the device (model.DashboardView:
@@ -217,7 +249,7 @@ func (c *DevicesController) WipeSensorData(w http.ResponseWriter, r *http.Reques
 // RefreshProfile re-reads the template, chip/firmware and sensors from the device and
 // re-detects the sensor type (which may then also go down, e.g. to "other"). 409 if offline.
 func (c *DevicesController) RefreshProfile(w http.ResponseWriter, r *http.Request) {
-	state := deviceState(w, r, c.states)
+	state := tasmotaDevice(w, r, c.states)
 	if state == nil {
 		return
 	}

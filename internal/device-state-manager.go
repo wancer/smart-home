@@ -45,10 +45,10 @@ type DeviceConfig struct {
 	LedPwmOff  *uint
 	LedPwmOn   *uint
 
-	LightPower  *bool
-	Dimmer      *uint // 0..100
-	Hue         *uint // 0..360
-	Saturation  *uint // 0..100
+	LightPower *bool
+	Dimmer     *uint // 0..100
+	Hue        *uint // 0..360
+	Saturation *uint // 0..100
 
 	Timers [16]*TimerConfig
 	Rules  [3]*RuleConfig
@@ -82,11 +82,24 @@ type DeviceState struct {
 
 	ChipTemperature *float32   // ESP32 internal temperature (SetOption146 1)
 	LastTelemetry   *time.Time // last tele/SENSOR message; IR availability falls back to LWT while nil
+	// TelemetryInterval is the time between the last two tele/SENSOR messages while online: the
+	// automatic offline timeout of devices that never report a TelePeriod (ESPHome).
+	TelemetryInterval time.Duration
+	lastSensorAt      time.Time // last tele/SENSOR message (LastTelemetry also moves on tele/STATE)
 
 	Uptime  *DeviceUptime // from tele/STATE or STATUS11
 	LoadAvg *uint         // Tasmota main loop load, %
 	// RestartReason of the last boot (STATUS1), polled when the device comes online; nil while offline
 	RestartReason *string
+}
+
+// MarkTelemetry records a tele/SENSOR message at now (LastTelemetry, TelemetryInterval).
+func (s *DeviceState) MarkTelemetry(now *time.Time) {
+	if s.Online && !s.lastSensorAt.IsZero() {
+		s.TelemetryInterval = now.Sub(s.lastSensorAt)
+	}
+	s.lastSensorAt = *now
+	s.LastTelemetry = now
 }
 
 // SetReadings keeps what a telemetry message reports besides the series values: today's energy
@@ -125,9 +138,9 @@ func NewDeviceStateManager(devices []*model.Device) *DeviceStateManager {
 	states := map[uint]*DeviceState{}
 	for _, device := range devices {
 		states[device.ID] = &DeviceState{
-			Online:   false,
-			On:       nil,
-			Device:   device,
+			Online: false,
+			On:     nil,
+			Device: device,
 			Config: &DeviceConfig{},
 		}
 	}
@@ -147,9 +160,9 @@ func (d *DeviceStateManager) GetAll() map[uint]*DeviceState {
 
 func (d *DeviceStateManager) Add(device *model.Device) {
 	d.devices[device.ID] = &DeviceState{
-		Online:   false,
-		On:       nil,
-		Device:   device,
+		Online: false,
+		On:     nil,
+		Device: device,
 		Config: &DeviceConfig{},
 	}
 }

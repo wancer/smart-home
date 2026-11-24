@@ -37,7 +37,7 @@ type RuleResponse struct {
 }
 
 func (c *DeviceRulesController) Get(w http.ResponseWriter, r *http.Request) {
-	state := deviceState(w, r, c.states)
+	state := tasmotaDevice(w, r, c.states)
 	if state == nil {
 		return
 	}
@@ -62,7 +62,7 @@ func (c *DeviceRulesController) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *DeviceRulesController) Set(w http.ResponseWriter, r *http.Request) {
-	state := deviceState(w, r, c.states)
+	state := tasmotaDevice(w, r, c.states)
 	if state == nil {
 		return
 	}

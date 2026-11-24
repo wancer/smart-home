@@ -29,7 +29,7 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 	values := h.storage.Store(state.Device.ID, now, e.SeriesReadings())
 
 	state.LastUpdate = &now
-	state.LastTelemetry = &now
+	state.MarkTelemetry(&now)
 	if !state.Online {
 		slog.Info(fmt.Sprintf("Getting %s online", state.Device.Name))
 		state.Online = true
@@ -66,7 +66,7 @@ func (h *EventHandler) handleBareTelemetry(state *internal.DeviceState, e *event
 	state.SetValues(values)
 
 	state.LastUpdate = now
-	state.LastTelemetry = now
+	state.MarkTelemetry(now)
 	if !state.Online {
 		slog.Info(fmt.Sprintf("Getting %s online (telemetry)", state.Device.Name))
 		state.Online = true

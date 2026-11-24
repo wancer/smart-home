@@ -80,6 +80,7 @@ func NewDeviceResponse(state *internal.DeviceState, source SeriesSource) *Device
 		Name:            state.Device.Name,
 		Topic:           state.Device.Topic,
 		Enabled:         state.Device.Enabled,
+		Platform:        state.Device.Platform,
 		SensorType:      state.Device.SensorType,
 		SupportsToggle:  state.CanToggle(),
 		Profile:         newDeviceProfile(state),
@@ -105,6 +106,7 @@ type DeviceResponse struct {
 	Name           string         `json:"name"`
 	Topic          string         `json:"topic"`
 	Enabled        bool           `json:"enabled"`
+	Platform       string         `json:"platform"`       // tasmota, esphome (configured in its YAML, no commands)
 	SensorType     string         `json:"sensorType"`     // detected: energy, co2, t-h, multi, ir, other
 	SupportsToggle bool           `json:"supportsToggle"` // has a relay (template), not IR
 	Profile        *DeviceProfile `json:"profile"`
@@ -216,6 +218,9 @@ type FirmwareConfig struct {
 }
 
 func NewFirmwareConfig(d *model.Device, latest *string) FirmwareConfig {
+	if !d.IsTasmota() {
+		latest = nil // the latest Tasmota release says nothing about other firmware
+	}
 	firmware := FirmwareConfig{LatestVersion: latest}
 	if d.FirmwareVersion != "" {
 		firmware.Version = new(d.FirmwareVersion)
