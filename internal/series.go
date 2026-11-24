@@ -3,6 +3,7 @@ package internal
 import (
 	"cmp"
 	"context"
+	"log/slog"
 	"slices"
 	"smart-home/event"
 	"smart-home/model"
@@ -34,9 +35,31 @@ func newSeriesCache(db *gorm.DB) (*seriesCache, error) {
 		return nil, err
 	}
 	for i := range all {
+		if err := reclassify(db, &all[i]); err != nil {
+			return nil, err
+		}
 		c.add(&all[i])
 	}
 	return c, nil
+}
+
+// reclassify gives a raw series the kind its field has now (a field mapped to a kind after the
+// series was created, e.g. TCS34725 Red -> color_red). Known kinds are never changed (legacy
+// series keep the kind they were migrated with).
+func reclassify(db *gorm.DB, s *model.SensorSeries) error {
+	if s.Kind != model.KindRaw || s.Source == model.SourceLegacy {
+		return nil
+	}
+	kind := model.SeriesKind(s.Source, s.Field)
+	if kind == model.KindRaw {
+		return nil
+	}
+	if err := db.Model(&model.SensorSeries{}).Where("id = ?", s.Id).Update("kind", kind).Error; err != nil {
+		return err
+	}
+	slog.Info("Series kind updated", "series_id", s.Id, "source", s.Source, "field", s.Field, "kind", kind)
+	s.Kind = kind
+	return nil
 }
 
 // add must be called with c.lock held (or before the cache is shared).

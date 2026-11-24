@@ -29,7 +29,7 @@ func DetectSensorType(gpio []int, sns *event.SensorEvent) string {
 		return model.SensorTypeMulti
 	case sns != nil && sns.Co2 != nil:
 		return model.SensorTypeCo2
-	case sns != nil && sns.TempHum != nil:
+	case sns != nil && (sns.TempHum != nil || sns.Thermo != nil):
 		return model.SensorTypeTempHumid
 	case hasIr(gpio):
 		return model.SensorTypeIR
@@ -40,14 +40,13 @@ func DetectSensorType(gpio []int, sns *event.SensorEvent) string {
 }
 
 // isMultiSensor: a sensor only the multi type shows (pressure, DC monitor, MQ gas sensor, light or
-// colour sensor), or an energy
-// meter together with a climate sensor.
+// colour sensor), or an energy meter together with a climate sensor (CO2, T-H or a thermometer).
 func isMultiSensor(sns *event.SensorEvent) bool {
 	if sns == nil {
 		return false
 	}
 	return sns.Baro != nil || sns.Dc != nil || sns.Mq != nil || sns.Light != nil || sns.Color != nil ||
-		(sns.Energy != nil && (sns.Co2 != nil || sns.TempHum != nil))
+		(sns.Energy != nil && (sns.Co2 != nil || sns.TempHum != nil || sns.Thermo != nil))
 }
 
 func hasIr(gpio []int) bool {
@@ -70,9 +69,9 @@ func HasSensorData(sensorType string, sns *event.SensorEvent) bool {
 	case model.SensorTypeCo2:
 		return sns.Co2 != nil
 	case model.SensorTypeTempHumid:
-		return sns.TempHum != nil
+		return sns.TempHum != nil || sns.Thermo != nil
 	case model.SensorTypeMulti:
-		return sns.Energy != nil || sns.Co2 != nil || sns.TempHum != nil || sns.Baro != nil || sns.Dc != nil || sns.Mq != nil ||
+		return sns.Energy != nil || sns.Co2 != nil || sns.TempHum != nil || sns.Thermo != nil || sns.Baro != nil || sns.Dc != nil || sns.Mq != nil ||
 			sns.Light != nil || sns.Color != nil
 	}
 	return false

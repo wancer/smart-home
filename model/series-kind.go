@@ -15,6 +15,8 @@ const (
 	KindDcVoltage       = "dc_voltage"
 	KindDcCurrent       = "dc_current"
 	KindDcPower         = "dc_power"
+	KindDcBusVoltage    = "dc_bus_voltage"   // INA219/INA226 bus voltage (supply side)
+	KindDcShuntVoltage  = "dc_shunt_voltage" // INA219/INA226 voltage across the shunt (mV)
 	KindTemperature     = "temperature"
 	KindChipTemperature = "chip_temperature"
 	KindHumidity        = "humidity"
@@ -23,6 +25,10 @@ const (
 	KindPressure        = "pressure"
 	KindIlluminance     = "illuminance"
 	KindColorTemp       = "color_temp"
+	KindColorRed        = "color_red" // colour sensor channels (TCS34725): % of full scale
+	KindColorGreen      = "color_green"
+	KindColorBlue       = "color_blue"
+	KindColorClear      = "color_clear" // the unfiltered channel
 	KindGasRatio        = "gas_ratio"
 	KindRaw             = "raw"
 )
@@ -52,6 +58,8 @@ var Kinds = map[string]KindInfo{
 	KindDcVoltage:       {KindDcVoltage, "V", 2},
 	KindDcCurrent:       {KindDcCurrent, "A", 3},
 	KindDcPower:         {KindDcPower, "W", 2},
+	KindDcBusVoltage:    {KindDcBusVoltage, "V", 2},
+	KindDcShuntVoltage:  {KindDcShuntVoltage, "mV", 2},
 	KindTemperature:     {KindTemperature, "°C", 1},
 	KindChipTemperature: {KindChipTemperature, "°C", 1},
 	KindHumidity:        {KindHumidity, "%", 1},
@@ -60,8 +68,42 @@ var Kinds = map[string]KindInfo{
 	KindPressure:        {KindPressure, "hPa", 1},
 	KindIlluminance:     {KindIlluminance, "lx", 0},
 	KindColorTemp:       {KindColorTemp, "K", 0},
+	KindColorRed:        {KindColorRed, "%", 1},
+	KindColorGreen:      {KindColorGreen, "%", 1},
+	KindColorBlue:       {KindColorBlue, "%", 1},
+	KindColorClear:      {KindColorClear, "%", 1},
 	KindGasRatio:        {KindGasRatio, "", 2},
 	KindRaw:             {KindRaw, "", 2},
+}
+
+// liveOnlyKinds are shown as live values only (tiles, dashboard, notifications): their series
+// exist, but no history is stored (derived or rarely useful values: VA, var, cos φ, dew point,
+// INA bus/shunt voltage, colour channels), and Storage.PruneValues deletes any stored before.
+var liveOnlyKinds = map[string]bool{
+	KindApparentPower:  true,
+	KindReactivePower:  true,
+	KindPowerFactor:    true,
+	KindDewPoint:       true,
+	KindDcBusVoltage:   true,
+	KindDcShuntVoltage: true,
+	KindColorRed:       true,
+	KindColorGreen:     true,
+	KindColorBlue:      true,
+	KindColorClear:     true,
+}
+
+// IsLiveOnly reports whether series of the kind keep no history (see liveOnlyKinds).
+func IsLiveOnly(kind string) bool {
+	return liveOnlyKinds[kind]
+}
+
+// LiveOnlyKinds lists the live-only kinds, for queries.
+func LiveOnlyKinds() []string {
+	kinds := make([]string, 0, len(liveOnlyKinds))
+	for k := range liveOnlyKinds {
+		kinds = append(kinds, k)
+	}
+	return kinds
 }
 
 // energyKinds are the ENERGY (AC meter) fields with a kind of their own.
@@ -90,6 +132,12 @@ var fieldKinds = map[string]string{
 	"Pressure":         KindPressure,
 	"Illuminance":      KindIlluminance,
 	"ColorTemperature": KindColorTemp,
+	"BusVoltage":       KindDcBusVoltage,
+	"ShuntVoltage":     KindDcShuntVoltage,
+	"Red":              KindColorRed,
+	"Green":            KindColorGreen,
+	"Blue":             KindColorBlue,
+	"Clear":            KindColorClear,
 }
 
 // energySkip are the ENERGY fields that aren't samples: counters (kWh totals, Wh since the previous

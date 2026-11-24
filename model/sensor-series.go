@@ -21,6 +21,11 @@ func (SensorSeries) TableName() string {
 	return "sensor_series"
 }
 
+// LiveOnly reports whether the series keeps only its live value, no history (IsLiveOnly).
+func (s SensorSeries) LiveOnly() bool {
+	return IsLiveOnly(s.Kind)
+}
+
 // SensorValue is one bucket of a series. BucketTime is the bucket start, always written as UTC
 // (migrated rows keep their stored text, which may carry another offset: compare with
 // datetime() on both sides). BucketSeconds is the bucket size (0 = a raw reading). Avg is

@@ -46,6 +46,7 @@ type SeriesResponse struct {
 	Precision int     `json:"precision"`
 	Label     *string `json:"label"`
 	Hidden    bool    `json:"hidden"`
+	LiveOnly  bool    `json:"liveOnly"` // only the live value, no history (no charts)
 }
 
 func newSeriesResponse(s model.SensorSeries) SeriesResponse {
@@ -53,6 +54,7 @@ func newSeriesResponse(s model.SensorSeries) SeriesResponse {
 	return SeriesResponse{
 		Id: s.Id, Source: s.Source, Field: s.Field, Kind: s.Kind,
 		Unit: info.Unit, Precision: info.Precision, Label: s.Label, Hidden: s.Hidden,
+		LiveOnly: s.LiveOnly(),
 	}
 }
 

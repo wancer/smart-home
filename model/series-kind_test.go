@@ -26,8 +26,12 @@ func TestSeriesKind(t *testing.T) {
 		{"BH1750", "Illuminance", KindIlluminance},
 		{"TCS34725", "Illuminance", KindIlluminance},
 		{"TCS34725", "ColorTemperature", KindColorTemp},
-		{"TCS34725", "Red", KindRaw},
-		{"TCS34725", "Clear", KindRaw},
+		{"TCS34725", "Red", KindColorRed},
+		{"TCS34725", "Green", KindColorGreen},
+		{"TCS34725", "Blue", KindColorBlue},
+		{"TCS34725", "Clear", KindColorClear},
+		{"INA219", "BusVoltage", KindDcBusVoltage},
+		{"INA219", "ShuntVoltage", KindDcShuntVoltage},
 		{"MQ", "Ratio", KindGasRatio},
 		{"MQ", "Rs", KindRaw},
 		{"ANALOG", "A1", KindRaw},
@@ -61,7 +65,8 @@ func TestKindsTable(t *testing.T) {
 		KindPower, KindApparentPower, KindReactivePower, KindPowerFactor, KindVoltage, KindCurrent,
 		KindDcVoltage, KindDcCurrent, KindDcPower, KindTemperature, KindChipTemperature,
 		KindHumidity, KindDewPoint, KindCo2, KindPressure, KindIlluminance, KindColorTemp,
-		KindGasRatio, KindRaw,
+		KindGasRatio, KindRaw, KindDcBusVoltage, KindDcShuntVoltage,
+		KindColorRed, KindColorGreen, KindColorBlue, KindColorClear,
 	}
 	if len(Kinds) != len(all) {
 		t.Errorf("Kinds has %d entries, want %d", len(Kinds), len(all))
@@ -101,6 +106,29 @@ func TestSkipSeriesField(t *testing.T) {
 	for _, k := range keep {
 		if SkipSeriesField(k[0], k[1]) {
 			t.Errorf("%s.%s must be kept", k[0], k[1])
+		}
+	}
+}
+
+func TestIsLiveOnly(t *testing.T) {
+	live := [][2]string{
+		{"ENERGY", "ApparentPower"}, {"ENERGY", "ReactivePower"}, {"ENERGY", "Factor"}, {"ENERGY", "Factor2"},
+		{"SHT3X", "DewPoint"}, {"INA219", "BusVoltage"}, {"INA219", "ShuntVoltage"},
+		{"TCS34725", "Red"}, {"TCS34725", "Green"}, {"TCS34725", "Blue"}, {"TCS34725", "Clear"},
+	}
+	for _, l := range live {
+		if !IsLiveOnly(SeriesKind(l[0], l[1])) {
+			t.Errorf("%s.%s must be live-only", l[0], l[1])
+		}
+	}
+	keep := [][2]string{
+		{"ENERGY", "Power"}, {"ENERGY", "Voltage"}, {"ENERGY", "Current"}, {"SHT3X", "Temperature"},
+		{"SHT3X", "Humidity"}, {"ESP32", "Temperature"}, {"INA219", "Voltage"}, {"INA219", "Current"},
+		{"TCS34725", "Illuminance"}, {"TCS34725", "ColorTemperature"}, {"ANALOG", "A1"}, {"MQ", "Rs"},
+	}
+	for _, k := range keep {
+		if IsLiveOnly(SeriesKind(k[0], k[1])) {
+			t.Errorf("%s.%s must keep history", k[0], k[1])
 		}
 	}
 }

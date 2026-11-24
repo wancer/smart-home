@@ -56,6 +56,13 @@ type Co2 struct {
 	DewPoint    float32 `json:"DewPoint"`
 }
 
+// Thermometer is a temperature-only sensor (DS18B20, DS18x20, MAX31855, ...). Tasmota names
+// several DS18B20 on one bus DS18B20-1, DS18B20-2, ...; Thermo is the first one, every one
+// is its own series anyway (SeriesReadings).
+type Thermometer struct {
+	Temperature float32 `json:"Temperature"`
+}
+
 // Barometer is the pressure of a BME280 / BMP280 / ... (its temperature and humidity go to TempHum).
 type Barometer struct {
 	Pressure float32 `json:"Pressure"` // hPa
@@ -103,6 +110,7 @@ type Chip struct {
 // SensorEvent is a tele/SENSOR (or STATUS10 StatusSNS) payload. Sensors are recognised by their
 // fields, not their names: the first one with CarbonDioxide is Co2 (SCD40, MHZ19B, ...), the
 // first other one with Temperature and Humidity is TempHum (SHT4X, SHT3X, AM2301, BME280, ...),
+// the first other one with Temperature only is Thermo (DS18B20, ...),
 // the first one with Pressure is Baro (BME280, BMP280, ...) and the first one with Voltage and
 // Current is Dc (INA219, ...), the first one with Red, Green and Blue is Color (TCS34725, ...)
 // and the first other one with Illuminance is Light (BH1750, ...). ANALOG values are kept raw in Analog.
@@ -111,6 +119,7 @@ type SensorEvent struct {
 	Energy  *Energy
 	Co2     *Co2
 	TempHum *TempHumidity
+	Thermo  *Thermometer
 	Baro    *Barometer
 	Dc      *DcMonitor
 	Light   *LightMeter
@@ -194,6 +203,8 @@ func (e *SensorEvent) UnmarshalJSON(in []byte) error {
 			e.Co2.Temperature, e.Co2.Humidity, e.Co2.DewPoint = deref(probe.Temperature), deref(probe.Humidity), deref(probe.DewPoint)
 		case probe.CarbonDioxide == nil && probe.Temperature != nil && probe.Humidity != nil && e.TempHum == nil:
 			e.TempHum = &TempHumidity{Temperature: *probe.Temperature, Humidity: *probe.Humidity, DewPoint: deref(probe.DewPoint)}
+		case probe.CarbonDioxide == nil && probe.Temperature != nil && probe.Humidity == nil && e.Thermo == nil:
+			e.Thermo = &Thermometer{Temperature: *probe.Temperature}
 		}
 		if probe.Pressure != nil && e.Baro == nil {
 			e.Baro = &Barometer{Pressure: *probe.Pressure}
@@ -262,7 +273,8 @@ func deref(v *float32) float32 {
 
 // Readings are the values of every known sensor in a message, whatever the device's
 // sensor type; nil = not reported. Temperature / humidity come from TempHum (a dedicated
-// T-H sensor, including BME280), else from the CO2 sensor.
+// T-H sensor, including BME280), else from the CO2 sensor, else (temperature only) from a
+// thermometer (DS18B20).
 type Readings struct {
 	// AC energy meter
 	Period        *uint
@@ -333,6 +345,8 @@ func (e *SensorEvent) Readings() Readings {
 		r.Temperature, r.Humidity, r.DewPoint = new(e.TempHum.Temperature), new(e.TempHum.Humidity), new(e.TempHum.DewPoint)
 	case e.Co2 != nil:
 		r.Temperature, r.Humidity, r.DewPoint = new(e.Co2.Temperature), new(e.Co2.Humidity), new(e.Co2.DewPoint)
+	case e.Thermo != nil:
+		r.Temperature = new(e.Thermo.Temperature)
 	}
 	return r
 }
@@ -380,9 +394,9 @@ func (e *SensorEvent) SeriesReadings() []Reading {
 		}
 	}
 	if m := e.Mq; m != nil {
-		add(model.SourceMq, "Rs", math.Round(float64(m.Rs)*10) / 10)
+		add(model.SourceMq, "Rs", math.Round(float64(m.Rs)*10)/10)
 		if m.Ratio != nil {
-			add(model.SourceMq, "Ratio", math.Round(float64(*m.Ratio)*100) / 100)
+			add(model.SourceMq, "Ratio", math.Round(float64(*m.Ratio)*100)/100)
 		}
 	}
 	slices.SortFunc(out, func(a, b Reading) int {

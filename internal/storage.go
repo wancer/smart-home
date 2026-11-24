@@ -112,14 +112,14 @@ func (s *Storage) init(c *config.Config) error {
 	go func() {
 		// Rollups run in this goroutine so they never overlap a flush. The first one
 		// can take a while after a device's tiers changed, so it doesn't block startup.
-		s.PruneChipTemperature()
+		s.PruneValues()
 		s.ApplyStorageTiers()
 		for {
 			select {
 			case <-ticker.C:
 				s.Flush()
 			case <-maintenanceTicker.C:
-				s.PruneChipTemperature()
+				s.PruneValues()
 				s.ApplyStorageTiers()
 			case <-s.bufferFlushStream:
 				ticker.Stop()
@@ -134,9 +134,10 @@ func (s *Storage) init(c *config.Config) error {
 	return nil
 }
 
-// PruneChipTemperature deletes the values of chip_temperature series (and only those)
-// older than ChipTemperatureRetention.
-func (s *Storage) PruneChipTemperature() {
+// PruneValues deletes the values of chip_temperature series (and only those) older than
+// ChipTemperatureRetention, and every value of live-only series (SensorSeries.LiveOnly: never
+// stored now, removes their history from before).
+func (s *Storage) PruneValues() {
 	s.writeLock.Lock()
 	defer s.writeLock.Unlock()
 	cutoff := time.Now().Add(-ChipTemperatureRetention).UTC().Format(time.DateTime)
@@ -146,10 +147,18 @@ func (s *Storage) PruneChipTemperature() {
 		Delete(&model.SensorValue{})
 	if res.Error != nil {
 		slog.Error("prune chip temperature", "err", res.Error)
-		return
-	}
-	if res.RowsAffected > 0 {
+	} else if res.RowsAffected > 0 {
 		slog.Info("Pruned chip temperatures", "rows", res.RowsAffected)
+	}
+
+	liveOnly := s.db.Model(&model.SensorSeries{}).Select("id").Where("kind IN ?", model.LiveOnlyKinds())
+	res = s.db.
+		Where("series_id IN (?)", liveOnly).
+		Delete(&model.SensorValue{})
+	if res.Error != nil {
+		slog.Error("prune live-only series", "err", res.Error)
+	} else if res.RowsAffected > 0 {
+		slog.Info("Deleted the history of live-only series", "rows", res.RowsAffected)
 	}
 }
 
@@ -304,10 +313,11 @@ func (s *Storage) GetBuffer() []BufferedValue {
 }
 
 // Store buffers the readings of one message, received at `at`. Series are created on first
-// sight. A power reading's Sum is the energy it stands for (Wh = power × readingInterval).
+// sight. Readings of live-only series (SensorSeries.LiveOnly) are not buffered, only returned.
+// A power reading's Sum is the energy it stands for (Wh = power × readingInterval).
 // It returns the values keyed by series ID (the device's live values).
 func (s *Storage) Store(deviceId uint, at time.Time, readings []event.Reading) map[uint]float64 {
-	values, kinds := s.resolveReadings(deviceId, readings, at)
+	values, series := s.resolveReadings(deviceId, readings, at)
 	if len(values) == 0 {
 		return values
 	}
@@ -317,8 +327,11 @@ func (s *Storage) Store(deviceId uint, at time.Time, readings []event.Reading) m
 
 	var hours *float64
 	for id, value := range values {
+		if series[id].LiveOnly() {
+			continue
+		}
 		v := BufferedValue{SeriesId: id, DeviceId: deviceId, At: at.UTC(), Value: value}
-		if kinds[id] == model.KindPower {
+		if series[id].Kind == model.KindPower {
 			if hours == nil {
 				hours = new(s.readingInterval(deviceId, at).Hours())
 			}
@@ -330,11 +343,11 @@ func (s *Storage) Store(deviceId uint, at time.Time, readings []event.Reading) m
 	return values
 }
 
-// resolveReadings maps readings to their series (created on first sight): values and kinds by
+// resolveReadings maps readings to their series (created on first sight): values and series by
 // series ID. A reading whose series can't be created is logged and left out.
-func (s *Storage) resolveReadings(deviceId uint, readings []event.Reading, at time.Time) (map[uint]float64, map[uint]string) {
+func (s *Storage) resolveReadings(deviceId uint, readings []event.Reading, at time.Time) (map[uint]float64, map[uint]model.SensorSeries) {
 	values := make(map[uint]float64, len(readings))
-	kinds := make(map[uint]string, len(readings))
+	byId := make(map[uint]model.SensorSeries, len(readings))
 	anyCreated := false
 	for _, r := range readings {
 		series, created, err := s.series.resolve(deviceId, r.Source, r.Field, at)
@@ -344,12 +357,12 @@ func (s *Storage) resolveReadings(deviceId uint, readings []event.Reading, at ti
 		}
 		anyCreated = anyCreated || created
 		values[series.Id] = r.Value
-		kinds[series.Id] = series.Kind
+		byId[series.Id] = *series
 	}
 	if anyCreated && s.OnSeriesChange != nil {
 		s.OnSeriesChange(deviceId)
 	}
-	return values, kinds
+	return values, byId
 }
 
 func (s *Storage) StoreDaily(e *event.SensorEvent, deviceId uint) {

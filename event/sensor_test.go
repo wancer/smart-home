@@ -182,12 +182,12 @@ func TestSeriesReadingsTaskSample(t *testing.T) {
 	checkSeries(t, got, []series{
 		{"BH1750", "Illuminance", 223.5482, model.KindIlluminance},
 		{"ESP32", "Temperature", 18.33333, model.KindChipTemperature},
-		{"TCS34725", "Blue", 22.79176, model.KindRaw},
-		{"TCS34725", "Clear", 30.87053, model.KindRaw},
+		{"TCS34725", "Blue", 22.79176, model.KindColorBlue},
+		{"TCS34725", "Clear", 30.87053, model.KindColorClear},
 		{"TCS34725", "ColorTemperature", 3469.305, model.KindColorTemp},
-		{"TCS34725", "Green", 34.01711, model.KindRaw},
+		{"TCS34725", "Green", 34.01711, model.KindColorGreen},
 		{"TCS34725", "Illuminance", 188.7146, model.KindIlluminance},
-		{"TCS34725", "Red", 41.78241, model.KindRaw},
+		{"TCS34725", "Red", 41.78241, model.KindColorRed},
 	})
 }
 
@@ -295,4 +295,43 @@ func TestSeriesReadingsSkipsNaNAndNil(t *testing.T) {
 		"X": {"A": math.NaN(), "B": math.Inf(1), "C": 1},
 	}}
 	checkSeries(t, seriesFrom(&e), []series{{"X", "C", 1, model.KindRaw}})
+}
+
+func TestDS18B20(t *testing.T) {
+	payload := `{"Time":"2026-11-24T12:00:00","DS18B20":{"Id":"0B257989FB50","Temperature":31.8},"TempUnit":"C"}`
+	var e SensorEvent
+	if err := json.Unmarshal([]byte(payload), &e); err != nil {
+		t.Fatal(err)
+	}
+	if e.Thermo == nil || e.Thermo.Temperature != 31.8 || e.TempHum != nil {
+		t.Fatalf("Thermo = %+v, TempHum = %+v", e.Thermo, e.TempHum)
+	}
+	r := e.Readings()
+	if r.Temperature == nil || *r.Temperature != 31.8 || r.Humidity != nil {
+		t.Errorf("readings: %+v", r)
+	}
+	checkSeries(t, seriesFrom(&e), []series{
+		{"DS18B20", "Temperature", 31.8, model.KindTemperature},
+	})
+}
+
+// Several DS18B20 on one bus: each its own series; a T-H sensor keeps precedence for Readings.
+func TestDS18B20Multiple(t *testing.T) {
+	got := seriesOf(t, `{"Time":"2026-11-24T12:00:00",
+		"DS18B20-1":{"Id":"0B257989FB50","Temperature":31.8},
+		"DS18B20-2":{"Id":"0C257989FB51","Temperature":5.2},
+		"SHT3X":{"Temperature":21,"Humidity":45,"DewPoint":9}}`)
+	checkSeries(t, got, []series{
+		{"DS18B20-1", "Temperature", 31.8, model.KindTemperature},
+		{"DS18B20-2", "Temperature", 5.2, model.KindTemperature},
+		{"SHT3X", "DewPoint", 9, model.KindDewPoint},
+		{"SHT3X", "Humidity", 45, model.KindHumidity},
+		{"SHT3X", "Temperature", 21, model.KindTemperature},
+	})
+
+	var e SensorEvent
+	_ = json.Unmarshal([]byte(`{"DS18B20-1":{"Temperature":31.8},"SHT3X":{"Temperature":21,"Humidity":45}}`), &e)
+	if r := e.Readings(); *r.Temperature != 21 {
+		t.Errorf("SHT3X should win over DS18B20, got %v", *r.Temperature)
+	}
 }
