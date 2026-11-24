@@ -15,10 +15,7 @@ type NotifyRule struct {
 	DeviceId uint   `gorm:"not null;index"`
 	Kind     string `gorm:"size:16;not null"`
 	// SeriesId is the watched series (above/below only).
-	SeriesId *uint
-	// Metric is the legacy metric (= series kind: power, temperature, gas_ratio, ...) of rules made
-	// before series; container.migrateNotifyRules turns it into SeriesId. Not used otherwise.
-	Metric         string  `gorm:"size:16"`
+	SeriesId       *uint
 	Threshold      float64 // above/below only
 	DurationSec    int     `gorm:"not null;default:0"`
 	NotifyRecovery bool    `gorm:"not null;default:false"` // above/below: also notify when the value is back to normal; offline: when the device is back online

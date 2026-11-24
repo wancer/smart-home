@@ -200,8 +200,7 @@ func (c *DevicesController) WipeSensorData(w http.ResponseWriter, r *http.Reques
 	}
 	deviceId := state.Device.ID
 
-	// Series, values and daily history in one transaction. The legacy sensor_aggregate table
-	// (only kept after a failed migration check, see container/series-migration.go) is not touched.
+	// Series, values and daily history in one transaction.
 	err := c.storage.DeleteDevice(c.db.WithContext(r.Context()), deviceId, func(tx *gorm.DB) error {
 		return tx.Where("device_id = ?", deviceId).Delete(&model.SensorHistory{}).Error
 	})

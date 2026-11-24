@@ -1,31 +1,6 @@
 package model
 
-import (
-	"reflect"
-	"testing"
-)
-
-func TestDashboardViewFromLegacy(t *testing.T) {
-	preferred := map[string][]uint{KindTemperature: {7, 3}, KindCo2: {4}, KindPower: {9}}
-
-	view, err := LegacyDashboardView{Chart: "temperature", Values: []string{"co2", "temperature", "pressure"}}.FromLegacy(preferred)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := DashboardView{Chart: new(uint(7)), Values: []uint{4, 7}}
-	if !reflect.DeepEqual(view, want) {
-		t.Errorf("FromLegacy: %+v, want %+v", view, want)
-	}
-	if _, err := (LegacyDashboardView{Values: []string{"bogus"}}).FromLegacy(preferred); err == nil {
-		t.Error("unknown metric accepted")
-	}
-	if v, _ := (LegacyDashboardView{Chart: "pressure"}).FromLegacy(preferred); !v.IsAuto() {
-		t.Errorf("chart without a series: %+v, want auto", v)
-	}
-	if v, _ := (LegacyDashboardView{Chart: "none"}).FromLegacy(preferred); !v.NoChart {
-		t.Errorf("none: %+v", v)
-	}
-}
+import "testing"
 
 func TestValidateDashboardView(t *testing.T) {
 	owned := func(id uint) bool { return id < 10 }

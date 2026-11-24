@@ -46,10 +46,7 @@ type NotifyRuleRequest struct {
 type NotifyRuleResponse struct {
 	ID uint `json:"id"`
 	NotifyRuleRequest
-	// Metric is the legacy metric of a rule made before series whose series couldn't be found
-	// (the rule was disabled by the migration); empty otherwise.
-	Metric string `json:"metric,omitempty"`
-	Active bool   `json:"active"` // fired and not recovered yet
+	Active bool `json:"active"` // fired and not recovered yet
 }
 
 type NotificationsResponse struct {
@@ -98,15 +95,11 @@ func (c *NotificationsController) toResponse(rule *model.NotifyRule) NotifyRuleR
 		},
 		Active: rule.Enabled && c.notifier.Active(rule.ID),
 	}
-	if rule.UsesThreshold() && rule.SeriesId == nil {
-		resp.Metric = rule.Metric
-	}
 	return resp
 }
 
 func (c *NotificationsController) apply(rule *model.NotifyRule, req *NotifyRuleRequest) {
 	rule.Kind, rule.SeriesId, rule.Threshold, rule.DurationSec = req.Kind, req.SeriesId, req.Threshold, req.Duration
-	rule.Metric = "" // legacy, replaced by the series
 	rule.NotifyRecovery, rule.Message, rule.Enabled = req.NotifyRecovery, req.Message, req.Enabled
 }
 

@@ -179,39 +179,3 @@ func (s *Storage) UpdateSeries(ctx context.Context, id uint, label *string, hidd
 	}
 	return nil
 }
-
-// PreferredSeriesOf returns one device's series IDs per kind, the preferred one first: a
-// dedicated temperature/humidity sensor before a CO₂ sensor's, a light meter's illuminance before
-// a colour sensor's, and migrated (SourceLegacy) data last. Used by the startup migration of
-// metric-key dashboard views and notification rules.
-func PreferredSeriesOf(series []model.SensorSeries) map[string][]uint {
-	hasKind := map[string]bool{}  // source + "\x00" + kind
-	hasField := map[string]bool{} // source + "\x00" + field
-	for _, s := range series {
-		hasKind[s.Source+"\x00"+s.Kind] = true
-		hasField[s.Source+"\x00"+s.Field] = true
-	}
-	rank := func(s model.SensorSeries) int {
-		switch {
-		case s.Source == model.SourceLegacy:
-			return 2
-		case (s.Kind == model.KindTemperature || s.Kind == model.KindHumidity || s.Kind == model.KindDewPoint) &&
-			hasKind[s.Source+"\x00"+model.KindCo2]:
-			return 1
-		case s.Kind == model.KindIlluminance && hasField[s.Source+"\x00Red"]:
-			return 1
-		}
-		return 0
-	}
-
-	sorted := slices.Clone(series)
-	slices.SortStableFunc(sorted, func(a, b model.SensorSeries) int {
-		return cmp.Or(cmp.Compare(rank(a), rank(b)), cmp.Compare(a.Source, b.Source),
-			cmp.Compare(a.Field, b.Field), cmp.Compare(a.Id, b.Id))
-	})
-	result := map[string][]uint{}
-	for _, s := range sorted {
-		result[s.Kind] = append(result[s.Kind], s.Id)
-	}
-	return result
-}
