@@ -82,10 +82,54 @@ func (s *DeviceState) LightPowerIndex() int {
 	return 1
 }
 
-// CanToggle: the device has a relay (from the template) and isn't an IR remote.
+// CanToggle: the device has a relay or a light (from the template) and isn't an IR remote.
+// POWER / POWER1 switches the first relay, or the light when there is no relay.
 func (s *DeviceState) CanToggle() bool {
 	hw := s.LedHardware()
-	return hw != nil && hw.Relays > 0 && s.Device.SensorType != model.SensorTypeIR
+	return hw != nil && (hw.Relays > 0 || hw.Light != LightNone) && s.Device.SensorType != model.SensorTypeIR
+}
+
+// RelayCount is the number of relays in the stored template (0 while it's unknown).
+func (s *DeviceState) RelayCount() int {
+	if hw := s.LedHardware(); hw != nil {
+		return hw.Relays
+	}
+	return 0
+}
+
+// SetRelay keeps the state of output POWER<index>.
+func (s *DeviceState) SetRelay(index int, on bool) {
+	if s.relays == nil {
+		s.relays = map[int]bool{}
+	}
+	s.relays[index] = on
+}
+
+// ClearRelays forgets the relay states, e.g. when the device goes offline.
+func (s *DeviceState) ClearRelays() {
+	s.relays = nil
+}
+
+// RelayStates is the state of each relay from the template (POWER1..n, null while unknown);
+// nil if the device has no relay.
+func (s *DeviceState) RelayStates() []*bool {
+	n := s.RelayCount()
+	if n == 0 || s.Device.SensorType == model.SensorTypeIR {
+		return nil
+	}
+	states := make([]*bool, n)
+	for i := range states {
+		if on, ok := s.relays[i+1]; ok {
+			states[i] = new(on)
+		}
+	}
+	return states
+}
+
+// HasLight: the template has a light (WS2812 or PWM channels), so dimmer / colour commands work.
+func (s *DeviceState) HasLight() bool {
+	hw := s.LedHardware()
+	return hw != nil && hw.Light != LightNone
 }
 
 // HueSatToHex returns the colour at full brightness as "#rrggbb".

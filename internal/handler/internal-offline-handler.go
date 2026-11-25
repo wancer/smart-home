@@ -11,6 +11,7 @@ func (h *EventHandler) InternalHandleOffline(e *event.InternalOfflineEvent) {
 	state.Online = false
 
 	state.On = nil
+	state.ClearRelays()
 	today := state.Today // kept: it's the daily total, not a live reading
 	state.ClearReadings()
 	state.Today = today

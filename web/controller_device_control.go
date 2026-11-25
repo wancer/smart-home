@@ -42,6 +42,8 @@ type DeviceControlRequest struct {
 	DeviceId  uint   `json:"deviceId"`
 	Parameter string `json:"parameter"`
 	Value     string `json:"value"`
+	// Relay is the POWER<n> output "on-off" switches on a multi-relay device (0 or 1 = POWER).
+	Relay int `json:"relay,omitempty"`
 }
 
 func (c *DeviceControlController) resolveTimezone(state *internal.DeviceState) *string {
@@ -261,7 +263,10 @@ func (c *DeviceControlController) Do(w http.ResponseWriter, r *http.Request) {
 func (c *DeviceControlController) handle(r *DeviceControlRequest, d *internal.DeviceState) error {
 	switch r.Parameter {
 	case "on-off":
-		c.pub.OnOff(d.Device, r.Value == "ON")
+		if r.Relay < 0 || r.Relay > max(1, d.RelayCount()) {
+			return fmt.Errorf("invalid relay: %d", r.Relay)
+		}
+		c.pub.RelayOnOff(d.Device, r.Relay, r.Value == "ON")
 	case "voltage":
 		volts, err := strconv.Atoi(r.Value)
 		if err != nil {

@@ -90,6 +90,22 @@ func (c *EventParser) parseTeleState(_ driver.Client, msg driver.Message) {
 
 	slog.Debug("[event] tele state", "event", string(msg.Payload()))
 	c.dispatcher.DispatchMqqt(&parsed, msg.Topic())
+	c.dispatchTelePower(msg.Payload(), "", msg.Topic())
+}
+
+// dispatchTelePower sends the POWER<n> keys of a tele/STATE payload (under key, if set) as a Power event.
+func (c *EventParser) dispatchTelePower(payload []byte, key string, topic string) {
+	var raw map[string]any
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return
+	}
+	if key != "" {
+		raw, _ = raw[key].(map[string]any)
+	}
+	if p, ok := event.NewPowerFromMap(raw); ok {
+		p.Tele = true
+		c.dispatcher.DispatchMqqt(p, topic)
+	}
 }
 
 // parseStatus11 handles the STATUS11 reply: the tele/STATE payload wrapped in StatusSTS.
@@ -102,6 +118,7 @@ func (c *EventParser) parseStatus11(_ driver.Client, msg driver.Message) {
 
 	slog.Debug("[event] status11", "event", string(msg.Payload()))
 	c.dispatcher.DispatchMqqt(parsed.StatusSTS, msg.Topic())
+	c.dispatchTelePower(msg.Payload(), "StatusSTS", msg.Topic())
 }
 
 // parseStatus1 handles the STATUS1 reply (restart reason).
@@ -133,8 +150,14 @@ func (c *EventParser) parseFirmware(_ driver.Client, msg driver.Message) {
 	c.dispatcher.DispatchMqqt(&parsed, msg.Topic())
 }
 
+// parsePowerEvent handles stat/<topic>/POWER (and POWER<n>, if subscribed).
 func (c *EventParser) parsePowerEvent(_ driver.Client, msg driver.Message) {
-	parsed, err := event.NewPower(string(msg.Payload()))
+	topic := msg.Topic()
+	index, ok := event.PowerKeyIndex(topic[strings.LastIndex(topic, "/")+1:])
+	if !ok {
+		index = 1
+	}
+	parsed, err := event.NewPower(string(msg.Payload()), index)
 	if err != nil {
 		slog.Error("POWER_ERR", "error", err)
 		return
@@ -167,6 +190,15 @@ func (c *EventParser) parseResult(_ driver.Client, msg driver.Message) {
 		c.dispatcher.DispatchMqqt(&e, msg.Topic())
 		return
 	}
+	// {"POWER":"ON"}, {"POWER2":"OFF"}, {"POWER1":"ON","POWER2":"OFF",…}: relays (or the light's power)
+	if event.OnlyPowerKeys(rawMapped) {
+		if p, ok := event.NewPowerFromMap(rawMapped); ok {
+			c.dispatcher.DispatchMqqt(p, msg.Topic())
+		} else {
+			slog.Warn("mqqt-event result", "event", string(msg.Payload()), "topic", msg.Topic())
+		}
+		return
+	}
 	if light, ok := event.NewLight(rawMapped); ok {
 		c.dispatcher.DispatchMqqt(light, msg.Topic())
 		return
@@ -177,7 +209,6 @@ func (c *EventParser) parseResult(_ driver.Client, msg driver.Message) {
 	var parsed any
 
 	switch key {
-	// {"POWER":"ON"}
 	// {"LedState":1}
 	// {"LedPower1":"OFF"}
 	// {"TelePeriod":15}
@@ -187,10 +218,6 @@ func (c *EventParser) parseResult(_ driver.Client, msg driver.Message) {
 	// {"LedPwmOn":255}
 	// {"TimeStd":{"Hemisphere":0,"Week":0,"Month":10,"Day":1,"Hour":4,"Offset":120}}
 	// {"TimeDst":{"Hemisphere":0,"Week":0,"Month":3,"Day":1,"Hour":3,"Offset":180}}
-	case "POWER":
-		var e event.Power
-		e, err = event.NewPower(rawMapped[key].(string))
-		parsed = &e
 	case "LedPower1":
 		var e event.LedPower
 		e, err = event.NewLedPower(rawMapped[key].(string))

@@ -51,6 +51,19 @@ func (p *Publisher) OnOff(device *model.Device, state bool) {
 	p.publish(device, "POWER", value)
 }
 
+// RelayOnOff switches relay POWER<index> of a multi-relay device (index 1 = POWER, as OnOff).
+func (p *Publisher) RelayOnOff(device *model.Device, index int, state bool) {
+	if index <= 1 {
+		p.OnOff(device, state)
+		return
+	}
+	value := "OFF"
+	if state {
+		value = "ON"
+	}
+	p.publish(device, fmt.Sprintf("POWER%d", index), value)
+}
+
 func (p *Publisher) GetSensors(device *model.Device) {
 	p.publish(device, "STATUS10", "10")
 }
@@ -181,6 +194,15 @@ func (p *Publisher) SetLightPower(device *model.Device, index int, state bool) {
 
 func (p *Publisher) SetDimmer(device *model.Device, value int) {
 	p.publish(device, "Dimmer", fmt.Sprintf("%d", value))
+}
+
+// StepDimmer changes the brightness by Tasmota's DimmerStep (default 10).
+func (p *Publisher) StepDimmer(device *model.Device, up bool) {
+	value := "-"
+	if up {
+		value = "+"
+	}
+	p.publish(device, "Dimmer", value)
 }
 
 // SetHueSat changes the colour, keeping the brightness (dimmer).

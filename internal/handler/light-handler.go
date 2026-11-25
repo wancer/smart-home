@@ -5,6 +5,7 @@ import (
 	"smart-home/event"
 	"smart-home/internal"
 	"smart-home/model"
+	"time"
 )
 
 // HandleTemplate stores the GPIO template in the device profile; an IR GPIO may set the type.
@@ -24,6 +25,14 @@ func (h *EventHandler) HandleTemplate(state *internal.DeviceState, e *event.Temp
 func (h *EventHandler) HandleLight(state *internal.DeviceState, e *event.Light) {
 	if e.Power != nil && e.PowerIndex == state.LightPowerIndex() {
 		state.Config.LightPower = new(*e.Power)
+	}
+	// POWER1 in a light reply is the device's on/off, as in HandlePower
+	// (web_socket.go pushes it as a `state` event).
+	if e.Power != nil && e.PowerIndex == 1 {
+		now := time.Now()
+		state.On = new(*e.Power)
+		state.SetRelay(1, *e.Power)
+		state.LastUpdate = &now
 	}
 	if e.Dimmer != nil {
 		state.Config.Dimmer = new(*e.Dimmer)

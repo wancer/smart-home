@@ -90,6 +90,7 @@ func NewDeviceResponse(state *internal.DeviceState, source SeriesSource) *Device
 		StorageTiers:    state.Device.Tiers(),
 		State: &DeviceState{
 			On:         state.On,
+			Relays:     state.RelayStates(),
 			LastUpdate: last,
 			Values:     values,
 		},
@@ -97,8 +98,10 @@ func NewDeviceResponse(state *internal.DeviceState, source SeriesSource) *Device
 }
 
 type DeviceState struct {
-	On         *bool  `json:"on"`
-	LastUpdate *int64 `json:"last"`
+	On *bool `json:"on"`
+	// Relays is the state of each relay (POWER1..n, null while unknown); null without relays.
+	Relays     []*bool `json:"relays"`
+	LastUpdate *int64  `json:"last"`
 	// Values are the live series values (series ID -> value); empty while offline.
 	Values map[uint]float64 `json:"values"`
 }
@@ -109,8 +112,8 @@ type DeviceResponse struct {
 	Topic          string         `json:"topic"`
 	Enabled        bool           `json:"enabled"`
 	Platform       string         `json:"platform"`       // tasmota, esphome (configured in its YAML, no commands)
-	SensorType     string         `json:"sensorType"`     // detected: energy, co2, t-h, multi, ir, other
-	SupportsToggle bool           `json:"supportsToggle"` // has a relay (template), not IR
+	SensorType     string         `json:"sensorType"`     // detected: energy, co2, t-h, multi, ir, light, other
+	SupportsToggle bool           `json:"supportsToggle"` // has a relay or a light (template), not IR
 	Profile        *DeviceProfile `json:"profile"`
 	OfflineTimeout uint           `json:"offlineTimeout"` // seconds, 0 = auto
 	// StorageTiers is the effective sensor data retention (the default when not set).
@@ -132,8 +135,9 @@ type SensorHistorySize struct {
 }
 
 type WsStateEvent struct {
-	ID uint  `json:"deviceId"`
-	On *bool `json:"on"`
+	ID     uint    `json:"deviceId"`
+	On     *bool   `json:"on"`
+	Relays []*bool `json:"relays"` // as DeviceState.Relays
 }
 
 type DeviceSensorDailyEvent struct {

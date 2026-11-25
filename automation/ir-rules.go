@@ -5,6 +5,7 @@ import (
 	"smart-home/event"
 	"smart-home/internal"
 	"smart-home/model"
+	"strconv"
 	"sync"
 	"time"
 
@@ -15,6 +16,9 @@ import (
 type Publisher interface {
 	OnOff(device *model.Device, state bool)
 	SendIR(device *model.Device, protocol string, bits int, code string)
+	SetDimmer(device *model.Device, value int)
+	StepDimmer(device *model.Device, up bool)
+	SetHueSat(device *model.Device, hue, sat uint)
 }
 
 type ReceivedCode struct {
@@ -131,6 +135,8 @@ func (r *IrRuleRunner) execute(rule model.IrRule) {
 			r.power(rule, a)
 		case model.IrActionIR:
 			r.sendSignal(rule, a)
+		case model.IrActionDimmer, model.IrActionColor:
+			r.light(rule, a)
 		default:
 			slog.Warn("[ir][rule] unknown action", "rule", rule.ID, "type", a.Type)
 		}
@@ -159,6 +165,39 @@ func (r *IrRuleRunner) power(rule model.IrRule, a model.IrRuleAction) {
 		return
 	}
 	r.pub.OnOff(target.Device, on)
+}
+
+// light sets the brightness or colour of a light (values validated when the rule was saved).
+func (r *IrRuleRunner) light(rule model.IrRule, a model.IrRuleAction) {
+	if a.TargetDeviceId == nil {
+		return
+	}
+	target := r.states.GetById(*a.TargetDeviceId)
+	if target == nil || !target.HasLight() {
+		slog.Warn("[ir][rule] light target missing", "rule", rule.ID, "device", *a.TargetDeviceId)
+		return
+	}
+
+	if a.Type == model.IrActionColor {
+		hue, sat, err := internal.HexToHueSat(a.Value)
+		if err != nil {
+			slog.Warn("[ir][rule] bad colour", "rule", rule.ID, "value", a.Value)
+			return
+		}
+		r.pub.SetHueSat(target.Device, hue, sat)
+		return
+	}
+	switch a.Value {
+	case model.IrDimmerUp, model.IrDimmerDown:
+		r.pub.StepDimmer(target.Device, a.Value == model.IrDimmerUp)
+	default:
+		value, err := strconv.Atoi(a.Value)
+		if err != nil || value < 0 || value > 100 {
+			slog.Warn("[ir][rule] bad dimmer", "rule", rule.ID, "value", a.Value)
+			return
+		}
+		r.pub.SetDimmer(target.Device, value)
+	}
 }
 
 func (r *IrRuleRunner) sendSignal(rule model.IrRule, a model.IrRuleAction) {

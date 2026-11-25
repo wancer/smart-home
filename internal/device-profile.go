@@ -11,14 +11,15 @@ import (
 )
 
 // sensorTypePriority: when a device shows several kinds, the higher one wins
-// (multi-sensor > CO₂ sensor > T-H sensor > IR remote > power plug > other).
+// (multi-sensor > CO₂ sensor > T-H sensor > IR remote > power plug > light > other).
 var sensorTypePriority = map[string]int{
-	model.SensorTypeMulti:     5,
+	model.SensorTypeMulti:     6,
 	model.SensorTypeOther:     0,
-	model.SensorTypeEnergy:    1,
-	model.SensorTypeIR:        2,
-	model.SensorTypeTempHumid: 3,
-	model.SensorTypeCo2:       4,
+	model.SensorTypeLight:     1,
+	model.SensorTypeEnergy:    2,
+	model.SensorTypeIR:        3,
+	model.SensorTypeTempHumid: 4,
+	model.SensorTypeCo2:       5,
 }
 
 // DetectSensorType tells the device type from its GPIO template and a sensor payload
@@ -35,6 +36,8 @@ func DetectSensorType(gpio []int, sns *event.SensorEvent) string {
 		return model.SensorTypeIR
 	case sns != nil && sns.Energy != nil:
 		return model.SensorTypeEnergy
+	case DetectLedHardware(gpio).Light != LightNone:
+		return model.SensorTypeLight
 	}
 	return model.SensorTypeOther
 }

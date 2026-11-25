@@ -24,9 +24,9 @@ func NewIrRulesController(db *gorm.DB, states *internal.DeviceStateManager, runn
 }
 
 type IrActionDto struct {
-	Type           string `json:"type"` // power | ir | delay
+	Type           string `json:"type"` // power | ir | delay | dimmer | color
 	TargetDeviceId *uint  `json:"targetDeviceId,omitempty"`
-	Value          string `json:"value,omitempty"` // on | off | toggle
+	Value          string `json:"value,omitempty"` // power: on | off | toggle; dimmer: 0..100 | + | -; color: #rrggbb
 	SignalId       *uint  `json:"signalId,omitempty"`
 	DelayMs        int    `json:"delayMs,omitempty"`
 }
@@ -70,7 +70,31 @@ func (c *IrRulesController) validate(r *http.Request, req *IrRuleRequest) string
 			}
 			t := c.states.GetById(*a.TargetDeviceId)
 			if t == nil || !t.CanToggle() {
-				return "power action target must be an existing device with a relay"
+				return "power action target must be an existing device with a relay or a light"
+			}
+			a.SignalId, a.DelayMs = nil, 0
+		case model.IrActionDimmer, model.IrActionColor:
+			if a.TargetDeviceId == nil {
+				return a.Type + " action needs targetDeviceId"
+			}
+			t := c.states.GetById(*a.TargetDeviceId)
+			if t == nil || !t.HasLight() || !t.Device.IsTasmota() {
+				return a.Type + " action target must be an existing Tasmota device with a light"
+			}
+			if a.Type == model.IrActionColor {
+				if _, _, err := internal.HexToHueSat(a.Value); err != nil {
+					return "color action value must be a colour like #ff8800"
+				}
+				a.Value = strings.ToLower(a.Value)
+				if !strings.HasPrefix(a.Value, "#") {
+					a.Value = "#" + a.Value
+				}
+			} else if a.Value != model.IrDimmerUp && a.Value != model.IrDimmerDown {
+				v, err := strconv.Atoi(a.Value)
+				if err != nil || v < 0 || v > 100 {
+					return "dimmer action value must be 0..100, + or -"
+				}
+				a.Value = strconv.Itoa(v)
 			}
 			a.SignalId, a.DelayMs = nil, 0
 		case model.IrActionIR:

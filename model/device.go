@@ -8,6 +8,7 @@ const (
 	SensorTypeCo2       = "co2"
 	SensorTypeTempHumid = "t-h"
 	SensorTypeIR        = "ir"    // infra-red remote: no sensors, no power control
+	SensorTypeLight     = "light" // light controller (WS2812 / PWM in the template), no sensors
 	SensorTypeOther     = "other" // nothing recognised (yet)
 	// SensorTypeMulti is any mix of supported sensors (e.g. BME280 + INA219). Every
 	// device stores whatever its telemetry reports; the type picks the UI and metrics.
@@ -82,10 +83,10 @@ func (d *Device) IsTasmota() bool {
 	return d.Platform != PlatformEsphome
 }
 
-// AvailabilityFromLwt: devices without sensor data (IR remotes, unrecognised devices) come
-// online with LWT "Online"; the others with their first sensor telemetry.
+// AvailabilityFromLwt: devices without sensor data (IR remotes, lights, unrecognised devices)
+// come online with LWT "Online"; the others with their first sensor telemetry.
 func (d *Device) AvailabilityFromLwt() bool {
-	return d.SensorType == SensorTypeIR || d.SensorType == SensorTypeOther
+	return d.SensorType == SensorTypeIR || d.SensorType == SensorTypeLight || d.SensorType == SensorTypeOther
 }
 
 func (Device) TableName() string {

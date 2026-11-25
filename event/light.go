@@ -16,8 +16,8 @@ type Light struct {
 	Saturation *uint // 0..100
 }
 
-// NewLight returns false if the payload is not a light state. A lone "POWER"/"POWER1"
-// is left to the regular Power event.
+// NewLight returns false if the payload is not a light state (no Dimmer / HSBColor). Payloads
+// with POWER<n> keys only (relays, or the light's own power) are left to the Power event.
 func NewLight(raw map[string]any) (*Light, bool) {
 	l := &Light{}
 	found := false
@@ -49,7 +49,7 @@ func NewLight(raw map[string]any) (*Light, bool) {
 		}
 	}
 
-	if !found && (l.Power == nil || l.PowerIndex == 1) {
+	if !found {
 		return nil, false
 	}
 	return l, true

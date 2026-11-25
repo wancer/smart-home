@@ -128,7 +128,7 @@ func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
 
 // resetFirmwareProfile drops what was read from the old platform's firmware (template, chip,
 // version) on a platform change. Seen sensors stay; the sensor type is re-detected from
-// telemetry (an IR remote, known from its template, starts over as "other").
+// telemetry (an IR remote or a light, known from its template, starts over as "other").
 func resetFirmwareProfile(d *model.Device) {
 	d.Template = nil
 	d.Chip = ""
@@ -136,7 +136,7 @@ func resetFirmwareProfile(d *model.Device) {
 	d.FirmwareBuiltAt = nil
 	d.FirmwareCore = ""
 	d.FirmwareSdk = ""
-	if d.SensorType == model.SensorTypeIR {
+	if d.SensorType == model.SensorTypeIR || d.SensorType == model.SensorTypeLight {
 		d.SensorType = model.SensorTypeOther
 	}
 }

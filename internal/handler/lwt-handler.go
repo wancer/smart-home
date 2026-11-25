@@ -25,6 +25,7 @@ func (h *EventHandler) HandleLwt(state *internal.DeviceState, e *event.Lwt) {
 	// Without a relay "on" mirrors availability, and nil means offline (as for other devices).
 	// With a relay the POWER reply (PublishStates below) sets it.
 	state.On = nil
+	state.ClearRelays()
 	if state.Online && !state.CanToggle() {
 		state.On = new(true)
 	}

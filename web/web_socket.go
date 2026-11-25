@@ -100,28 +100,38 @@ func (s *WebSocketServer) Subscribe(dispatcher *event.Dispatcher, states *intern
 		},
 	)
 
+	// POWER<n> states (the handler has applied them): push the device's on/off and relays.
 	dispatcher.Subscribe(
 		"Power",
 		func(raw any) {
 			e := raw.(event.MqttEvent)
 			p := e.Payload.(*event.Power)
-
-			if p == nil {
-				slog.Error("No power state in the event")
-				return
-			}
-
 			deviceState := states.GetByTopic(e.Topic)
 			if deviceState == nil { // in-flight message of a deleted or renamed device
 				return
 			}
-
-			on := bool(*p)
-			wsEvent := WsStateEvent{
-				ID: deviceState.Device.ID,
-				On: &on,
+			if p.Tele && !deviceState.Online {
+				return
 			}
-			s.Send("state", wsEvent)
+			s.Send("state", WsStateEvent{ID: deviceState.Device.ID, On: deviceState.On, Relays: deviceState.RelayStates()})
+		},
+	)
+
+	// A light reply ({"POWER":"ON","Dimmer":…}) carries POWER1 too: push it like a Power event.
+	dispatcher.Subscribe(
+		"Light",
+		func(raw any) {
+			e := raw.(event.MqttEvent)
+			p := e.Payload.(*event.Light)
+			if p.Power == nil || p.PowerIndex != 1 {
+				return
+			}
+			deviceState := states.GetByTopic(e.Topic)
+			if deviceState == nil {
+				return
+			}
+			on := *p.Power
+			s.Send("state", WsStateEvent{ID: deviceState.Device.ID, On: &on, Relays: deviceState.RelayStates()})
 		},
 	)
 
@@ -182,6 +192,7 @@ func (s *WebSocketServer) Subscribe(dispatcher *event.Dispatcher, states *intern
 			wsEvent := WsStateEvent{ID: e.DeviceId}
 			if e.Online {
 				wsEvent.On = deviceState.On // true, or for relays the last POWER (nil until it arrives)
+				wsEvent.Relays = deviceState.RelayStates()
 			}
 			s.Send("state", wsEvent)
 		},

@@ -1,9 +1,14 @@
 package model
 
 const (
-	IrActionPower = "power" // switch a socket: Value on|off|toggle, TargetDeviceId
-	IrActionIR    = "ir"    // send a stored IR signal: SignalId
-	IrActionDelay = "delay" // wait DelayMs before the next action
+	IrActionPower  = "power"  // switch a socket or a light: Value on|off|toggle, TargetDeviceId
+	IrActionIR     = "ir"     // send a stored IR signal: SignalId
+	IrActionDelay  = "delay"  // wait DelayMs before the next action
+	IrActionDimmer = "dimmer" // light brightness: Value 0..100, "+" or "-" (Tasmota DimmerStep), TargetDeviceId
+	IrActionColor  = "color"  // light colour: Value "#rrggbb" (hue/saturation, brightness kept), TargetDeviceId
+
+	IrDimmerUp   = "+"
+	IrDimmerDown = "-"
 
 	IrPowerOn     = "on"
 	IrPowerOff    = "off"

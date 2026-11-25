@@ -65,6 +65,8 @@ type DeviceState struct {
 	Online     bool
 	On         *bool
 	LastUpdate *time.Time
+	// relays is the last known state of each POWER<n> output (1-based) while online (see RelayStates).
+	relays map[int]bool
 
 	Today   *float32 // kWh consumed today (ENERGY.Today); kept while offline
 	Voltage *uint    // live AC voltage (ENERGY.Voltage), for power calibration (PowerSet); nil while offline
