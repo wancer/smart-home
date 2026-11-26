@@ -163,9 +163,13 @@ func (s *WebSocketServer) Subscribe(dispatcher *event.Dispatcher, states *intern
 				return
 			}
 
+			// a Matter sensor the bridge can't reach (or with the bridge offline): stale values
+			if deviceState.Unavailable(p) {
+				return
+			}
 			// IR remotes and unrecognised devices: their live values (e.g. only the chip temperature)
 			if !internal.HasSensorData(deviceState.Device.SensorType, p) &&
-				!(deviceState.Device.AvailabilityFromLwt() && len(deviceState.Values) > 0) {
+				!(internal.BareTelemetryIsLive(deviceState.Device) && len(deviceState.Values) > 0) {
 				return
 			}
 			wsEvent := NewSensorFromEvent(p, deviceState.Device, maps.Clone(deviceState.Values))

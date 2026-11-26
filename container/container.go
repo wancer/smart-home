@@ -70,6 +70,12 @@ func Build(cfg *config.Config) (*Container, error) {
 	profiles := internal.NewDeviceProfiles(db)
 	eventHandler := handler.NewEventHandler(dispatcher, states, publisher, storage, profiles, irRunner)
 	eventHandler.Subscribe()
+	dispatcher.Subscribe("PlatformChanged", func(raw any) {
+		if state := states.GetById(raw.(*event.PlatformChanged).DeviceId); state != nil {
+			// not in the MQTT callback that detected it: subscribing from there would block paho
+			go consumer.Sync(state.Device)
+		}
+	})
 
 	ws := web.NewWebSocketServer()
 	ws.Subscribe(dispatcher, states, storage) // after the handlers: reads their live values

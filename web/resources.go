@@ -76,18 +76,20 @@ func NewDeviceResponse(state *internal.DeviceState, source SeriesSource) *Device
 		last = new(state.LastUpdate.Unix())
 	}
 	return &DeviceResponse{
-		Series:          newSeriesList(source.DeviceSeries(state.Device.ID)),
-		DashboardSeries: dashboardView(state.Device),
-		ID:              state.Device.ID,
-		Name:            state.Device.Name,
-		Topic:           state.Device.Topic,
-		Enabled:         state.Device.Enabled,
-		Platform:        state.Device.Platform,
-		SensorType:      state.Device.SensorType,
-		SupportsToggle:  state.CanToggle(),
-		Profile:         newDeviceProfile(state),
-		OfflineTimeout:  state.Device.OfflineTimeout,
-		StorageTiers:    state.Device.Tiers(),
+		Series:                  newSeriesList(source.DeviceSeries(state.Device.ID)),
+		DashboardSeries:         dashboardView(state.Device),
+		ID:                      state.Device.ID,
+		Name:                    state.Device.Name,
+		Topic:                   state.Device.Topic,
+		Enabled:                 state.Device.Enabled,
+		Platform:                state.Device.Platform,
+		Bridge:                  bridgeOf(state.Device),
+		SensorType:              state.Device.SensorType,
+		SupportsToggle:          state.CanToggle(),
+		Profile:                 newDeviceProfile(state),
+		OfflineTimeout:          state.Device.OfflineTimeout,
+		EffectiveOfflineTimeout: uint(internal.OfflineTimeout(state) / time.Second),
+		StorageTiers:            state.Device.Tiers(),
 		State: &DeviceState{
 			On:         state.On,
 			Relays:     state.RelayStates(),
@@ -95,6 +97,13 @@ func NewDeviceResponse(state *internal.DeviceState, source SeriesSource) *Device
 			Values:     values,
 		},
 	}
+}
+
+func bridgeOf(d *model.Device) *string {
+	if !d.IsBridged() {
+		return nil
+	}
+	return new(d.BridgeTopic())
 }
 
 type DeviceState struct {
@@ -111,11 +120,15 @@ type DeviceResponse struct {
 	Name           string         `json:"name"`
 	Topic          string         `json:"topic"`
 	Enabled        bool           `json:"enabled"`
-	Platform       string         `json:"platform"`       // tasmota, esphome (configured in its YAML, no commands)
-	SensorType     string         `json:"sensorType"`     // detected: energy, co2, t-h, multi, ir, light, other
+	Platform       string         `json:"platform"`       // tasmota, esphome (configured in its YAML), matter (bridged end device); only tasmota takes commands
+	Bridge         *string        `json:"bridge"`         // matter: the bridge topic (LWT/STATE); null on other platforms
+	SensorType     string         `json:"sensorType"`     // detected: energy, co2, t-h, multi, leak, contact, ir, light, switch, other
 	SupportsToggle bool           `json:"supportsToggle"` // has a relay or a light (template), not IR
 	Profile        *DeviceProfile `json:"profile"`
 	OfflineTimeout uint           `json:"offlineTimeout"` // seconds, 0 = auto
+	// EffectiveOfflineTimeout is the timeout in use (seconds; auto resolved from the TelePeriod
+	// or the observed telemetry interval); clients break chart lines at gaps longer than this.
+	EffectiveOfflineTimeout uint `json:"effectiveOfflineTimeout"`
 	// StorageTiers is the effective sensor data retention (the default when not set).
 	StorageTiers []model.StorageTier `json:"storageTiers"`
 	// DashboardSeries is what the dashboard shows, by series (chart null and values null = auto).

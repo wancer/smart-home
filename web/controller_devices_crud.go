@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"smart-home/model"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -16,9 +17,12 @@ type DeviceUpsertRequest struct {
 	Topic          string `json:"topic"`
 	Enabled        bool   `json:"enabled"`
 	OfflineTimeout uint   `json:"offlineTimeout"` // seconds, 0 = auto
-	// Platform is model.PlatformTasmota or model.PlatformEsphome; omitted = tasmota on create,
+	// Platform is model.PlatformTasmota, PlatformEsphome or PlatformMatter; omitted = tasmota on create,
 	// unchanged on update.
 	Platform *string `json:"platform"`
+	// Bridge is the MQTT topic of a Matter device's bridge (its LWT/STATE); "" = the default
+	// (model.DefaultMatterBridge); omitted = "" on create, unchanged on update.
+	Bridge *string `json:"bridge"`
 	// StorageTiers is the sensor data retention: [] = the default; omitted = the default
 	// on create, unchanged on update.
 	StorageTiers *[]model.StorageTier `json:"storageTiers"`
@@ -41,6 +45,13 @@ func decodeDeviceRequest(w http.ResponseWriter, r *http.Request) (*DeviceUpsertR
 			return nil, false
 		}
 	}
+	if req.Bridge != nil {
+		*req.Bridge = strings.TrimSpace(*req.Bridge)
+		if strings.ContainsAny(*req.Bridge, "/+# ") || len(*req.Bridge) > 255 {
+			http.Error(w, "invalid bridge topic", http.StatusBadRequest)
+			return nil, false
+		}
+	}
 	return &req, true
 }
 
@@ -58,6 +69,9 @@ func (c *DevicesController) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Platform != nil {
 		device.Platform = *req.Platform
+	}
+	if req.Bridge != nil {
+		device.Bridge = *req.Bridge
 	}
 	err := c.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(device).Error; err != nil {
@@ -105,7 +119,10 @@ func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
 	if req.StorageTiers != nil {
 		device.StorageTiers = *req.StorageTiers
 	}
-	columns := []any{"Topic", "Enabled", "Platform", "OfflineTimeout", "StorageTiers"}
+	if req.Bridge != nil {
+		device.Bridge = *req.Bridge
+	}
+	columns := []any{"Topic", "Enabled", "Platform", "Bridge", "OfflineTimeout", "StorageTiers"}
 	if req.Platform != nil && *req.Platform != device.Platform {
 		device.Platform = *req.Platform
 		resetFirmwareProfile(device)
@@ -128,7 +145,7 @@ func (c *DevicesController) Update(w http.ResponseWriter, r *http.Request) {
 
 // resetFirmwareProfile drops what was read from the old platform's firmware (template, chip,
 // version) on a platform change. Seen sensors stay; the sensor type is re-detected from
-// telemetry (an IR remote or a light, known from its template, starts over as "other").
+// telemetry (an IR remote, a light or a switch, known from its template, starts over as "other").
 func resetFirmwareProfile(d *model.Device) {
 	d.Template = nil
 	d.Chip = ""
@@ -136,7 +153,7 @@ func resetFirmwareProfile(d *model.Device) {
 	d.FirmwareBuiltAt = nil
 	d.FirmwareCore = ""
 	d.FirmwareSdk = ""
-	if d.SensorType == model.SensorTypeIR || d.SensorType == model.SensorTypeLight {
+	if d.SensorType == model.SensorTypeIR || d.SensorType == model.SensorTypeLight || d.SensorType == model.SensorTypeSwitch {
 		d.SensorType = model.SensorTypeOther
 	}
 }

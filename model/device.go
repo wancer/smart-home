@@ -7,9 +7,12 @@ const (
 	SensorTypeEnergy    = "energy"
 	SensorTypeCo2       = "co2"
 	SensorTypeTempHumid = "t-h"
-	SensorTypeIR        = "ir"    // infra-red remote: no sensors, no power control
-	SensorTypeLight     = "light" // light controller (WS2812 / PWM in the template), no sensors
-	SensorTypeOther     = "other" // nothing recognised (yet)
+	SensorTypeIR        = "ir"      // infra-red remote: no sensors, no power control
+	SensorTypeLight     = "light"   // light controller (WS2812 / PWM in the template), no sensors
+	SensorTypeSwitch    = "switch"  // relays only (wall switch, relay board): no sensors, no light
+	SensorTypeLeak      = "leak"    // water leak sensor (Leak in telemetry), e.g. IKEA KLIPPBOK via a Matter bridge
+	SensorTypeContact   = "contact" // door/window contact sensor (Contact in telemetry: 1 = closed)
+	SensorTypeOther     = "other"   // nothing recognised (yet)
 	// SensorTypeMulti is any mix of supported sensors (e.g. BME280 + INA219). Every
 	// device stores whatever its telemetry reports; the type picks the UI and metrics.
 	SensorTypeMulti = "multi"
@@ -22,11 +25,21 @@ const (
 	// PlatformEsphome is configured in its YAML and only publishes Tasmota-shaped
 	// tele/<topic>/SENSOR, STATE and LWT. Nothing is ever sent to it.
 	PlatformEsphome = "esphome"
+	// PlatformMatter is an end device (sensor) behind a custom Matter bridge (ESP32-S3 + ESP32-C6).
+	// Per sensor (Topic): tele/<topic>/SENSOR (flat fields + "Available"), tele/<topic>/INFO,
+	// cmnd/<topic>/Identify -> stat/<topic>/RESULT. Shared by every sensor of the bridge
+	// (Bridge): tele/<bridge>/LWT and STATE. Only Identify is ever sent to it. Detected from
+	// "Available" or set in devices admin.
+	PlatformMatter = "matter"
 )
+
+// DefaultMatterBridge is the bridge topic of a Matter device that has none set (the bridge's
+// LEAK_TOPIC default).
+const DefaultMatterBridge = "matter-bridge"
 
 // ValidPlatform reports whether p is a known platform.
 func ValidPlatform(p string) bool {
-	return p == PlatformTasmota || p == PlatformEsphome
+	return p == PlatformTasmota || p == PlatformEsphome || p == PlatformMatter
 }
 
 // DeviceTemplate is the Tasmota GPIO template (reply to the `Template` command).
@@ -42,8 +55,11 @@ type Device struct {
 	Name    string `gorm:"size:255;not null"`
 	Topic   string `gorm:"uniqueIndex;size:255;not null"`
 	Enabled bool   `gorm:"not null;default:true"`
-	// Platform is the device firmware (PlatformTasmota, PlatformEsphome).
+	// Platform is the device firmware (PlatformTasmota, PlatformEsphome, PlatformMatter).
 	Platform string `gorm:"size:16;not null;default:tasmota"`
+	// Bridge is the MQTT topic of the bridge a Matter device sits behind (its LWT and STATE);
+	// "" = DefaultMatterBridge. Unused on other platforms.
+	Bridge string `gorm:"size:255;not null;default:''"`
 	// SensorType is detected from the profile; new devices start as SensorTypeOther, set explicitly
 	// on create (the column default is a leftover, changing it would make GORM rebuild the table).
 	SensorType string `gorm:"default:energy"`
@@ -80,13 +96,32 @@ func (d *Device) Tiers() []StorageTier {
 
 // IsTasmota: the device takes Tasmota commands (polling, control, profile, LED, timers, ...).
 func (d *Device) IsTasmota() bool {
-	return d.Platform != PlatformEsphome
+	return d.Platform == PlatformTasmota || d.Platform == ""
 }
 
-// AvailabilityFromLwt: devices without sensor data (IR remotes, lights, unrecognised devices)
-// come online with LWT "Online"; the others with their first sensor telemetry.
+// IsBridged: an end device behind a bridge (Matter): its LWT is the bridge's, its availability
+// is the "Available" field of its telemetry.
+func (d *Device) IsBridged() bool {
+	return d.Platform == PlatformMatter
+}
+
+// BridgeTopic is the topic of the bridge of a Matter device (Bridge or the default).
+func (d *Device) BridgeTopic() string {
+	if d.Bridge == "" {
+		return DefaultMatterBridge
+	}
+	return d.Bridge
+}
+
+// AvailabilityFromLwt: devices without sensor data (IR remotes, lights, switches, unrecognised devices)
+// come online with LWT "Online"; the others with their first sensor telemetry. Bridged devices
+// never: their LWT is the bridge's.
 func (d *Device) AvailabilityFromLwt() bool {
-	return d.SensorType == SensorTypeIR || d.SensorType == SensorTypeLight || d.SensorType == SensorTypeOther
+	if d.IsBridged() {
+		return false
+	}
+	return d.SensorType == SensorTypeIR || d.SensorType == SensorTypeLight || d.SensorType == SensorTypeSwitch ||
+		d.SensorType == SensorTypeOther
 }
 
 func (Device) TableName() string {

@@ -10,7 +10,13 @@ import (
 // HandleLwt tracks availability for IR remotes and unrecognised devices. If they also send
 // telemetry (ESP32 chip temperature), HandleSensorEvent and StateMonitor use it as well.
 // Sensor devices come online with sensor events, but go offline right away on LWT "Offline".
+//
+// A Matter device gets its bridge's LWT (tele/<bridge>/LWT, fanned out by the consumer): "Offline"
+// means every sensor of the bridge is unavailable, even if its retained SENSOR says otherwise.
 func (h *EventHandler) HandleLwt(state *internal.DeviceState, e *event.Lwt) {
+	if state.Device.IsBridged() {
+		state.BridgeOffline = !bool(*e)
+	}
 	if !state.Device.AvailabilityFromLwt() {
 		if !bool(*e) && state.Online {
 			slog.Info("Marking as offline: LWT", "deviceId", state.Device.ID)

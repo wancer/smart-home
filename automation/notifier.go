@@ -381,6 +381,9 @@ func (n *Notifier) onSensors(e *event.SensorsUpdated) {
 				text := fmt.Sprintf("%s %s: %s %s is %s %s",
 					notifierEmojiAlert, state.Device.Name, name,
 					FormatSeriesValue(series.Kind, value), rule.Kind, FormatSeriesValue(series.Kind, rule.Threshold))
+				if series.Kind == model.KindLeak || series.Kind == model.KindContact { // a state, not a quantity: "leak: LEAK"
+					text = fmt.Sprintf("%s %s: %s: %s", notifierEmojiAlert, state.Device.Name, name, FormatSeriesValue(series.Kind, value))
+				}
 				if rule.DurationSec > 0 {
 					text += " for " + humanDuration(held)
 				}
@@ -451,11 +454,22 @@ func SeriesName(s model.SensorSeries, all []model.SensorSeries) string {
 	return name
 }
 
-// FormatSeriesValue renders a value with the precision and unit of its kind ("21.5°C", "830 ppm").
+// FormatSeriesValue renders a value with the precision and unit of its kind ("21.5°C", "830 ppm";
+// a leak sensor: "LEAK" / "dry"; a contact sensor: "closed" / "open").
 func FormatSeriesValue(kind string, v float64) string {
 	info, ok := model.Kinds[kind]
 	if !ok {
 		info = model.Kinds[model.KindRaw]
+	}
+	switch {
+	case kind == model.KindLeak && v >= 0.5:
+		return "LEAK"
+	case kind == model.KindLeak:
+		return "dry"
+	case kind == model.KindContact && v >= 0.5:
+		return "closed"
+	case kind == model.KindContact:
+		return "open"
 	}
 	text := strconv.FormatFloat(v, 'f', info.Precision, 64)
 	switch info.Unit {

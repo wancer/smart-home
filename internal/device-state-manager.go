@@ -1,9 +1,11 @@
 package internal
 
 import (
+	"errors"
 	"smart-home/event"
 	"smart-home/model"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -93,6 +95,57 @@ type DeviceState struct {
 	LoadAvg *uint         // Tasmota main loop load, %
 	// RestartReason of the last boot (STATUS1), polled when the device comes online; nil while offline
 	RestartReason *string
+
+	// BridgeOffline: the bridge of a Matter device sent LWT "Offline", so the device is unavailable
+	// whatever its (retained) telemetry says, until the bridge is back.
+	BridgeOffline bool
+
+	cmdLock sync.Mutex
+	cmdWait chan event.CommandResult // the command in flight (Matter: one per sensor), nil = none
+}
+
+// ErrCommandPending: a command to the device still waits for its result.
+var ErrCommandPending = errors.New("a command is still pending")
+
+// BeginCommand reserves the device for one command and returns the channel its result arrives
+// on; EndCommand must follow. ErrCommandPending while another one is in flight.
+func (s *DeviceState) BeginCommand() (<-chan event.CommandResult, error) {
+	s.cmdLock.Lock()
+	defer s.cmdLock.Unlock()
+	if s.cmdWait != nil {
+		return nil, ErrCommandPending
+	}
+	s.cmdWait = make(chan event.CommandResult, 1)
+	return s.cmdWait, nil
+}
+
+// EndCommand frees the device for the next command (after its result or a timeout).
+func (s *DeviceState) EndCommand() {
+	s.cmdLock.Lock()
+	defer s.cmdLock.Unlock()
+	s.cmdWait = nil
+}
+
+// CommandResult hands a command result to the waiting command; false if none waits (a late
+// reply after a timeout, or one to a command sent from elsewhere).
+func (s *DeviceState) CommandResult(r event.CommandResult) bool {
+	s.cmdLock.Lock()
+	defer s.cmdLock.Unlock()
+	if s.cmdWait == nil {
+		return false
+	}
+	select {
+	case s.cmdWait <- r:
+		return true
+	default: // a result is already there
+		return false
+	}
+}
+
+// Unavailable: the device can't be reached although this telemetry came (a Matter sensor with
+// "Available":false, or whose bridge is offline); its values are stale.
+func (s *DeviceState) Unavailable(e *event.SensorEvent) bool {
+	return (e.Available != nil && !*e.Available) || (s.Device.IsBridged() && s.BridgeOffline)
 }
 
 // MarkTelemetry records a tele/SENSOR message at now (LastTelemetry, TelemetryInterval).

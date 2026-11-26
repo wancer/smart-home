@@ -11,15 +11,18 @@ import (
 )
 
 // sensorTypePriority: when a device shows several kinds, the higher one wins
-// (multi-sensor > CO₂ sensor > T-H sensor > IR remote > power plug > light > other).
+// (multi-sensor > leak sensor > contact sensor > CO₂ sensor > T-H sensor > IR remote > power plug > light > switch > other).
 var sensorTypePriority = map[string]int{
-	model.SensorTypeMulti:     6,
+	model.SensorTypeMulti:     9,
+	model.SensorTypeLeak:      8,
+	model.SensorTypeContact:   7,
 	model.SensorTypeOther:     0,
-	model.SensorTypeLight:     1,
-	model.SensorTypeEnergy:    2,
-	model.SensorTypeIR:        3,
-	model.SensorTypeTempHumid: 4,
-	model.SensorTypeCo2:       5,
+	model.SensorTypeSwitch:    1,
+	model.SensorTypeLight:     2,
+	model.SensorTypeEnergy:    3,
+	model.SensorTypeIR:        4,
+	model.SensorTypeTempHumid: 5,
+	model.SensorTypeCo2:       6,
 }
 
 // DetectSensorType tells the device type from its GPIO template and a sensor payload
@@ -28,6 +31,10 @@ func DetectSensorType(gpio []int, sns *event.SensorEvent) string {
 	switch {
 	case isMultiSensor(sns):
 		return model.SensorTypeMulti
+	case sns != nil && sns.Leak != nil:
+		return model.SensorTypeLeak
+	case sns != nil && sns.Contact != nil:
+		return model.SensorTypeContact
 	case sns != nil && sns.Co2 != nil:
 		return model.SensorTypeCo2
 	case sns != nil && (sns.TempHum != nil || sns.Thermo != nil):
@@ -36,8 +43,12 @@ func DetectSensorType(gpio []int, sns *event.SensorEvent) string {
 		return model.SensorTypeIR
 	case sns != nil && sns.Energy != nil:
 		return model.SensorTypeEnergy
-	case DetectLedHardware(gpio).Light != LightNone:
+	}
+	switch hw := DetectLedHardware(gpio); {
+	case hw.Light != LightNone:
 		return model.SensorTypeLight
+	case hw.Relays > 0:
+		return model.SensorTypeSwitch
 	}
 	return model.SensorTypeOther
 }
@@ -69,13 +80,17 @@ func HasSensorData(sensorType string, sns *event.SensorEvent) bool {
 	switch sensorType {
 	case model.SensorTypeEnergy:
 		return sns.Energy != nil
+	case model.SensorTypeLeak:
+		return sns.Leak != nil
+	case model.SensorTypeContact:
+		return sns.Contact != nil
 	case model.SensorTypeCo2:
 		return sns.Co2 != nil
 	case model.SensorTypeTempHumid:
 		return sns.TempHum != nil || sns.Thermo != nil
 	case model.SensorTypeMulti:
 		return sns.Energy != nil || sns.Co2 != nil || sns.TempHum != nil || sns.Thermo != nil || sns.Baro != nil || sns.Dc != nil || sns.Mq != nil ||
-			sns.Light != nil || sns.Color != nil
+			sns.Light != nil || sns.Color != nil || sns.Leak != nil || sns.Contact != nil
 	}
 	return false
 }
@@ -110,6 +125,34 @@ func (p *DeviceProfiles) Save(d *model.Device) {
 	if err != nil {
 		slog.Error("[device][profile] save error", "deviceId", d.ID, "err", err)
 	}
+}
+
+// SavePlatform writes the platform column only (platform auto-detection).
+func (p *DeviceProfiles) SavePlatform(d *model.Device) {
+	if err := p.db.Model(d).Select("Platform").Updates(d).Error; err != nil {
+		slog.Error("[device][platform] save error", "deviceId", d.ID, "err", err)
+	}
+}
+
+// DetectPlatform switches a Tasmota device to the Matter platform when its telemetry has the
+// top-level "Available" of a bridged end device (Tasmota never sends it) and nothing was ever read
+// from Tasmota firmware (template, version). Reports whether it changed; the caller dispatches
+// event.PlatformChanged so the MQTT subscriptions follow (the bridge is DefaultMatterBridge).
+func (s *DeviceState) DetectPlatform(sns *event.SensorEvent) bool {
+	d := s.Device
+	if sns == nil || sns.Available == nil || !d.IsTasmota() || d.Template != nil || d.FirmwareVersion != "" {
+		return false
+	}
+	slog.Info("[device][profile] platform detected", "deviceId", d.ID, "from", d.Platform, "to", model.PlatformMatter)
+	d.Platform = model.PlatformMatter
+	return true
+}
+
+// BareTelemetryIsLive: telemetry without the device type's sensor data still sets the live
+// values and keeps the device alive (IR remotes, unrecognised devices; a bridged device of
+// unknown type, which has no LWT of its own).
+func BareTelemetryIsLive(d *model.Device) bool {
+	return d.AvailabilityFromLwt() || (d.IsBridged() && d.SensorType == model.SensorTypeOther)
 }
 
 // SaveMq writes the MQ sensor column only (settings and calibration).

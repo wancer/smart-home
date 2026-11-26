@@ -16,8 +16,22 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 	}
 	state.ComputeMq(e, now) // before detection: an MQ reading makes the device multi
 
+	if state.DetectPlatform(e) {
+		h.profiles.SavePlatform(state.Device)
+		h.dispatcher.Dispatch(&event.PlatformChanged{DeviceId: state.Device.ID})
+	}
 	if state.ApplyDetection(e, false) {
 		h.profiles.Save(state.Device)
+	}
+
+	// A Matter sensor the bridge can't reach, or whose bridge is offline: its values are stale
+	// (the last known ones, or a retained message from before the bridge went down).
+	if state.Unavailable(e) {
+		if state.Online {
+			slog.Info("Marking as offline: not available on the bridge", "deviceId", state.Device.ID)
+			h.dispatcher.Dispatch(&event.InternalOfflineEvent{DeviceId: state.Device.ID})
+		}
+		return
 	}
 
 	// IR remotes, unrecognised devices, or a message without the device's sensor
@@ -54,12 +68,12 @@ func (h *EventHandler) HandleSensorEvent(state *internal.DeviceState, e *event.S
 
 // handleBareTelemetry treats telemetry without the device's sensor data (IR remotes and
 // unrecognised devices: e.g. only the ESP32 chip temperature, SetOption146 1) as a sign of
-// life, on top of LWT. Whatever the message reports is still stored as series; it becomes the
-// live values only for IR remotes and unrecognised devices (a sensor device keeps the values of
-// its last full message).
+// life, on top of LWT (a bridged device of unknown type has no LWT of its own: only this).
+// Whatever the message reports is still stored as series; it becomes the live values only for IR
+// remotes and unrecognised devices (a sensor device keeps the values of its last full message).
 func (h *EventHandler) handleBareTelemetry(state *internal.DeviceState, e *event.SensorEvent, now *time.Time) {
 	values := h.storage.Store(state.Device.ID, *now, e.SeriesReadings())
-	if !state.Device.AvailabilityFromLwt() {
+	if !internal.BareTelemetryIsLive(state.Device) {
 		return
 	}
 	// IR remotes / unrecognised devices: whatever they report is their live state

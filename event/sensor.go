@@ -114,6 +114,10 @@ type Chip struct {
 // the first one with Pressure is Baro (BME280, BMP280, ...) and the first one with Voltage and
 // Current is Dc (INA219, ...), the first one with Red, Green and Blue is Color (TCS34725, ...)
 // and the first other one with Illuminance is Light (BH1750, ...). ANALOG values are kept raw in Analog.
+//
+// Numbers and booleans at the top level (a Matter bridge sends its end device's fields flat:
+// {"Time", "Available", "Leak", "Battery", "BatteryVoltage", ...}) are the pseudo sensor
+// model.SourceDevice. "Available" is not a field but the end device's availability.
 type SensorEvent struct {
 	Time    TasmotaTime
 	Energy  *Energy
@@ -125,6 +129,15 @@ type SensorEvent struct {
 	Light   *LightMeter
 	Color   *ColorSensor
 	Chip    *Chip
+
+	// Leak is a water leak sensor's state (a "Leak" field, top level or in a sensor object); nil = none
+	// or unknown (a Matter sensor that hasn't reported it yet).
+	Leak *bool
+	// Contact is a contact sensor's state, true = closed (a "Contact" field, as Leak); nil = none.
+	Contact *bool
+	// Available is the top-level "Available" of a bridged device (Matter): false = the bridge can't
+	// reach it (its values are stale); nil = not reported (any other device).
+	Available *bool
 
 	Analog map[string]float32 // raw ANALOG values (A1, ...)
 	Mq     *MqReading         // set by the backend from Analog, see MqReading
@@ -148,10 +161,23 @@ func (e *SensorEvent) UnmarshalJSON(in []byte) error {
 		}
 	}
 
+	if a, ok := raw["Available"]; ok {
+		var available bool
+		if err := json.Unmarshal(a, &available); err == nil {
+			e.Available = &available
+		}
+	}
+
 	names := slices.Sorted(maps.Keys(raw))
+	flat := map[string]float64{}
 	for _, name := range names {
 		value := raw[name]
-		if len(value) == 0 || value[0] != '{' { // Time, TempUnit, ...
+		if len(value) == 0 || value[0] != '{' { // Time, TempUnit, flat fields of a bridged device, ...
+			if !topLevelMeta[name] {
+				if v, ok := scalar(value); ok {
+					flat[name] = v
+				}
+			}
 			continue
 		}
 		e.Sensors = append(e.Sensors, name)
@@ -160,6 +186,12 @@ func (e *SensorEvent) UnmarshalJSON(in []byte) error {
 				e.Raw = map[string]map[string]float64{}
 			}
 			e.Raw[name] = fields
+			if v, ok := fields["Leak"]; ok && e.Leak == nil {
+				e.Leak = new(v != 0)
+			}
+			if v, ok := fields["Contact"]; ok && e.Contact == nil {
+				e.Contact = new(v != 0)
+			}
 		}
 
 		switch name {
@@ -223,7 +255,49 @@ func (e *SensorEvent) UnmarshalJSON(in []byte) error {
 			e.Light = &LightMeter{Illuminance: *probe.Illuminance}
 		}
 	}
+
+	if len(flat) > 0 {
+		e.Sensors = append(e.Sensors, model.SourceDevice)
+		slices.Sort(e.Sensors)
+		if e.Raw == nil {
+			e.Raw = map[string]map[string]float64{}
+		}
+		e.Raw[model.SourceDevice] = flat
+		// the device's own fields win over a sensor object's
+		if v, ok := flat["Leak"]; ok {
+			e.Leak = new(v != 0)
+		}
+		if v, ok := flat["Contact"]; ok {
+			e.Contact = new(v != 0)
+		}
+	}
 	return nil
+}
+
+// topLevelMeta are top-level payload fields that aren't measurements: the timestamps (Tasmota
+// Time, the ESPHome "ts" epoch) and a bridged device's availability.
+var topLevelMeta = map[string]bool{"Time": true, "ts": true, "Epoch": true, "Available": true}
+
+// scalar reads a JSON number, or a boolean as 1/0; strings, null, arrays are not values.
+func scalar(value json.RawMessage) (float64, bool) {
+	var v any
+	if err := json.Unmarshal(value, &v); err != nil {
+		return 0, false
+	}
+	switch v := v.(type) {
+	case float64:
+		return v, true
+	case bool:
+		return boolValue(v), true
+	}
+	return 0, false
+}
+
+func boolValue(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // parseAnalog returns the numeric values of the ANALOG object (A1, Temperature1, Range1, ...).
@@ -241,8 +315,9 @@ func parseAnalog(value json.RawMessage) map[string]float32 {
 	return values
 }
 
-// parseRaw returns the numeric fields of a sensor object. Arrays of numbers (multi-phase
-// ENERGY, ...) become Field1, Field2, ...; strings and nested objects are skipped.
+// parseRaw returns the numeric fields of a sensor object, booleans as 1/0 (a binary sensor:
+// Leak, ...). Arrays of numbers (multi-phase ENERGY, ...) become Field1, Field2, ...; strings and
+// nested objects are skipped.
 func parseRaw(value json.RawMessage) map[string]float64 {
 	var raw map[string]any
 	if err := json.Unmarshal(value, &raw); err != nil {
@@ -253,6 +328,8 @@ func parseRaw(value json.RawMessage) map[string]float64 {
 		switch v := v.(type) {
 		case float64:
 			fields[k] = v
+		case bool:
+			fields[k] = boolValue(v)
 		case []any:
 			for i, item := range v {
 				if f, ok := item.(float64); ok {

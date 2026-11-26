@@ -67,6 +67,7 @@ func TestKindsTable(t *testing.T) {
 		KindHumidity, KindDewPoint, KindCo2, KindPressure, KindIlluminance, KindColorTemp,
 		KindGasRatio, KindRaw, KindDcBusVoltage, KindDcShuntVoltage,
 		KindColorRed, KindColorGreen, KindColorBlue, KindColorClear,
+		KindLeak, KindContact, KindBattery, KindBatteryVoltage,
 	}
 	if len(Kinds) != len(all) {
 		t.Errorf("Kinds has %d entries, want %d", len(Kinds), len(all))

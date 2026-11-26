@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"smart-home/model"
+	"strconv"
 
 	driver "github.com/eclipse/paho.mqtt.golang"
 )
@@ -269,4 +270,17 @@ func (p *Publisher) publish(device *model.Device, command string, value string) 
 func (p *Publisher) SendIR(device *model.Device, protocol string, bits int, code string) {
 	payload := fmt.Sprintf(`{"Protocol":%q,"Bits":%d,"Data":%q}`, protocol, bits, code)
 	p.publish(device, "IRsend", payload)
+}
+
+// Identify asks a Matter sensor to identify itself for seconds (0 stops): cmnd/<sensor>/Identify,
+// never retained (the bridge would replay it). The reply comes on stat/<sensor>/RESULT.
+func (p *Publisher) Identify(device *model.Device, seconds int) error {
+	if !device.IsBridged() {
+		return fmt.Errorf("not a Matter device: %s", device.Platform)
+	}
+	topic := fmt.Sprintf("cmnd/%s/Identify", device.Topic)
+	token := p.client.Publish(topic, 1, false, strconv.Itoa(seconds))
+	token.Wait()
+	slog.Debug("Send to topic", "topic", topic, "value", seconds)
+	return token.Error()
 }

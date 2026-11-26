@@ -335,3 +335,67 @@ func TestDS18B20Multiple(t *testing.T) {
 		t.Errorf("SHT3X should win over DS18B20, got %v", *r.Temperature)
 	}
 }
+
+func TestMatterBridgeLeakSensor(t *testing.T) {
+	payload := `{"Time":"2026-11-25T21:55:26","Available":true,"Leak":false,"Battery":98,"BatteryVoltage":2.843,"BatteryLevel":"OK"}`
+	var e SensorEvent
+	if err := json.Unmarshal([]byte(payload), &e); err != nil {
+		t.Fatal(err)
+	}
+	if e.Available == nil || !*e.Available {
+		t.Errorf("Available = %v, want true", e.Available)
+	}
+	if e.Leak == nil || *e.Leak {
+		t.Errorf("Leak = %v, want false", e.Leak)
+	}
+	if len(e.Sensors) != 1 || e.Sensors[0] != model.SourceDevice {
+		t.Errorf("Sensors = %v, want [%s]", e.Sensors, model.SourceDevice)
+	}
+	got := map[string]float64{}
+	for _, r := range e.SeriesReadings() {
+		if r.Source != model.SourceDevice {
+			t.Errorf("reading %+v: source, want %s", r, model.SourceDevice)
+		}
+		got[r.Field] = r.Value
+	}
+	want := map[string]float64{"Leak": 0, "Battery": 98, "BatteryVoltage": 2.843}
+	if len(got) != len(want) {
+		t.Errorf("readings = %v, want %v", got, want)
+	}
+	for f, v := range want {
+		if got[f] != v {
+			t.Errorf("%s = %v, want %v", f, got[f], v)
+		}
+	}
+	for f, kind := range map[string]string{"Leak": model.KindLeak, "Battery": model.KindBattery, "BatteryVoltage": model.KindBatteryVoltage} {
+		if k := model.SeriesKind(model.SourceDevice, f); k != kind {
+			t.Errorf("kind of %s = %s, want %s", f, k, kind)
+		}
+	}
+
+	var unavailable SensorEvent
+	if err := json.Unmarshal([]byte(`{"Time":"2026-11-25T21:53:23","Available":false}`), &unavailable); err != nil {
+		t.Fatal(err)
+	}
+	if unavailable.Available == nil || *unavailable.Available || unavailable.Leak != nil || len(unavailable.Raw) != 0 {
+		t.Errorf("unavailable = %+v", unavailable)
+	}
+
+	var wet SensorEvent
+	if err := json.Unmarshal([]byte(`{"Time":"2026-11-25T21:55:26","Available":true,"Leak":true}`), &wet); err != nil {
+		t.Fatal(err)
+	}
+	if wet.Leak == nil || !*wet.Leak {
+		t.Errorf("Leak = %v, want true", wet.Leak)
+	}
+}
+
+func TestTasmotaTopLevelStringsIgnored(t *testing.T) {
+	var e SensorEvent
+	if err := json.Unmarshal([]byte(`{"Time":"2026-11-20T12:00:00","Switch1":"ON","TempUnit":"C","SHT4X":{"Temperature":21,"Humidity":40}}`), &e); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := e.Raw[model.SourceDevice]; ok || e.Available != nil {
+		t.Errorf("unexpected flat fields: %+v", e.Raw)
+	}
+}

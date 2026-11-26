@@ -63,6 +63,7 @@ func NewWebServer(
 		r.Get("/api/devices/{deviceId}/timing", control.GetTiming)
 		r.Get("/api/devices/{deviceId}/hardware", control.GetHardware)
 		r.Post("/api/devices/{deviceId}/firmware/upgrade", control.UpgradeFirmware)
+		r.Post("/api/devices/{deviceId}/identify", control.Identify)
 		r.Get("/api/devices/{deviceId}/mq", control.GetMq)
 		r.Put("/api/devices/{deviceId}/mq", control.SetMq)
 		r.Post("/api/devices/{deviceId}/mq/calibrate", control.CalibrateMq)

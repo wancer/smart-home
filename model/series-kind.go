@@ -30,6 +30,10 @@ const (
 	KindColorBlue       = "color_blue"
 	KindColorClear      = "color_clear" // the unfiltered channel
 	KindGasRatio        = "gas_ratio"
+	KindLeak            = "leak"    // water leak sensor: 1 = leak, 0 = dry
+	KindContact         = "contact" // contact sensor: 1 = closed, 0 = open
+	KindBattery         = "battery"
+	KindBatteryVoltage  = "battery_voltage"
 	KindRaw             = "raw"
 )
 
@@ -39,6 +43,9 @@ const (
 	SourceChip   = "ESP32"  // ESP32 internal temperature (SetOption146 1)
 	SourceMq     = "MQ"     // MQ-xxx gas sensor, computed by the backend (Ratio, Rs)
 	SourceLegacy = "legacy" // migrated data whose sensor can't be told
+	// SourceDevice holds the top-level fields of a payload: a bridged (Matter) end device sends
+	// its values flat, not in a sensor object ({"Leak":false,"Battery":98,...}).
+	SourceDevice = "Device"
 )
 
 type KindInfo struct {
@@ -73,6 +80,10 @@ var Kinds = map[string]KindInfo{
 	KindColorBlue:       {KindColorBlue, "%", 1},
 	KindColorClear:      {KindColorClear, "%", 1},
 	KindGasRatio:        {KindGasRatio, "", 2},
+	KindLeak:            {KindLeak, "", 0},
+	KindContact:         {KindContact, "", 0},
+	KindBattery:         {KindBattery, "%", 0},
+	KindBatteryVoltage:  {KindBatteryVoltage, "V", 2},
 	KindRaw:             {KindRaw, "", 2},
 }
 
@@ -138,6 +149,10 @@ var fieldKinds = map[string]string{
 	"Green":            KindColorGreen,
 	"Blue":             KindColorBlue,
 	"Clear":            KindColorClear,
+	"Leak":             KindLeak,
+	"Contact":          KindContact,
+	"Battery":          KindBattery,
+	"BatteryVoltage":   KindBatteryVoltage,
 }
 
 // energySkip are the ENERGY fields that aren't samples: counters (kWh totals, Wh since the previous

@@ -354,3 +354,32 @@ func (c *EventParser) parseTeleResult(_ driver.Client, msg driver.Message) {
 	slog.Debug("[event] ir received", "event", string(msg.Payload()))
 	c.dispatcher.DispatchMqqt(raw.IrReceived, msg.Topic())
 }
+
+// parseMatterInfo handles tele/<sensor>/INFO of a Matter bridge (vendor, product, versions).
+func (c *EventParser) parseMatterInfo(_ driver.Client, msg driver.Message) {
+	var parsed event.MatterInfo
+	if err := json.Unmarshal(msg.Payload(), &parsed); err != nil {
+		slog.Error("CANT_PARSE_MSG", "err", err, "topic", msg.Topic(), "payload", string(msg.Payload()))
+		return
+	}
+
+	slog.Debug("[event] matter info", "event", string(msg.Payload()))
+	c.dispatcher.DispatchMqqt(&parsed, msg.Topic())
+}
+
+// parseCommandResult handles stat/<sensor>/RESULT of a Matter bridge: the reply to a command.
+func (c *EventParser) parseCommandResult(_ driver.Client, msg driver.Message) {
+	var raw map[string]any
+	if err := json.Unmarshal(msg.Payload(), &raw); err != nil {
+		slog.Error("CANT_PARSE_RESULT", "err", err, "topic", msg.Topic(), "payload", string(msg.Payload()))
+		return
+	}
+	parsed, ok := event.NewCommandResult(raw)
+	if !ok {
+		slog.Warn("mqqt-event result", "event", string(msg.Payload()), "topic", msg.Topic())
+		return
+	}
+
+	slog.Debug("[event] command result", "event", string(msg.Payload()))
+	c.dispatcher.DispatchMqqt(parsed, msg.Topic())
+}
